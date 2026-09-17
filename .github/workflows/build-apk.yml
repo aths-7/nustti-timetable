@@ -19,10 +19,14 @@ on:
 permissions:
   contents: read
 
+env:
+  # python-for-android 编译 libffi 时需要 libtool 的 m4 宏，显式指定宏搜索路径
+  ACLOCAL_PATH: /usr/share/aclocal
+
 jobs:
   apk:
     name: buildozer android debug
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 150
 
     steps:
@@ -34,9 +38,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             git zip unzip openjdk-17-jdk python3-pip python3-venv \
-            autoconf automake libtool pkg-config \
+            autoconf automake libtool pkg-config gettext \
+            autoconf-archive libltdl-dev libtool-bin m4 \
             zlib1g-dev libncurses-dev libncursesw5-dev libffi-dev libssl-dev \
-            cmake libtool-bin ccache
+            cmake ccache
           # libtinfo5 只在 Ubuntu 22.04 之前可用，24.04 上已并入 libtinfo6，装不上不算失败
           sudo apt-get install -y libtinfo5 || sudo apt-get install -y libtinfo-dev || true
 
