@@ -17,7 +17,7 @@ on:
     branches: [ main, master ]
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   # python-for-android 编译 libffi 时需要 libtool 的 m4 宏，显式指定宏搜索路径
@@ -78,6 +78,7 @@ jobs:
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
         run: |
+          set -o pipefail
           export ARCHS="${{ github.event.inputs.arch || 'arm64-v8a' }}"
           # spec 里写死了 arm64-v8a，若手动选择了别的架构就在构建前改掉
           if [ "$ARCHS" != "arm64-v8a" ]; then
@@ -85,7 +86,8 @@ jobs:
           fi
           # 首次构建会下载 SDK/NDK 并全量编译，务必给足时间；
           # 不加 yes| 管道：spec 里 android.accept_sdk_license = True 已自动接受许可
-          buildozer -v android debug
+          # tee 保留完整输出，供后续步骤回传给本地排错
+          buildozer -v android debug 2>&1 | tee /tmp/buildozer_full.log
 
       - name: 列出产物
         if: always()
@@ -114,3 +116,40 @@ jobs:
             .buildozer/android/platform/build-*/build.log
             .buildozer/android/platform/build-*/dists/*/*.log
           if-no-files-found: ignore
+
+      # 关键：把构建结论 / APK / 日志尾部回传到 ci-artifacts 分支。
+      # 本机直连 github.com 的 HTTPS 受限，走 git 协议（SSH 443）即可取回产物。
+      - name: 回传结果到 ci-artifacts 分支
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OUT=/tmp/ci-out
+          rm -rf "$OUT"; mkdir -p "$OUT"
+          cp bin/*.apk "$OUT"/ 2>/dev/null || true
+          cp dist/*.apk "$OUT"/ 2>/dev/null || true
+          if [ -f /tmp/buildozer_full.log ]; then
+            tail -n 1200 /tmp/buildozer_full.log > "$OUT/build-log-tail.txt" || true
+            grep -n -i -E "error:|Command failed|Traceback|Exception|No such file|not found" \
+              /tmp/buildozer_full.log | tail -n 300 > "$OUT/build-log-errors.txt" || true
+          fi
+          {
+            echo "{"
+            echo "  \"status\": \"${{ job.status }}\","
+            echo "  \"sha\": \"$GITHUB_SHA\","
+            echo "  \"run_id\": \"$GITHUB_RUN_ID\","
+            echo "  \"attempt\": \"$GITHUB_RUN_ATTEMPT\","
+            echo "  \"time_utc\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
+            echo "}"
+          } > "$OUT/build-status.json"
+          ls -lh "$OUT"
+          cd "$OUT"
+          git init -q
+          git checkout -q -b ci-artifacts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "ci run $GITHUB_RUN_ID: ${{ job.status }}" || true
+          git remote add origin "https://github.com/${{ github.repository }}.git"
+          git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" \
+            push -f origin ci-artifacts
