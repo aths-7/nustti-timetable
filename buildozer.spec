@@ -20,7 +20,9 @@ version = 1.0.0
 #   pillow   -> 背景图缩放/模糊（tt_bg.py 用 PIL 做高斯模糊）
 #   requests -> 教务系统登录/抓课表
 #   openpyxl -> 仅用于读取 .xlsx 课表（如需缩短首次构建时间，可从本行删掉）
-requirements = python3,kivy,pillow,requests,openpyxl
+# 注：charset-normalizer 是 requests 的依赖，其 3.4+ 版本发布了 android 平台 wheel，
+#     会让 python-for-android 的 pip 因平台标记不匹配而失败，故固定到纯 Python 的 3.3.2。
+requirements = python3,kivy,pillow,requests==2.32.3,charset-normalizer==3.3.2,openpyxl
 
 # 竖屏、非全屏（Kivy 会自己按窗口尺寸排版）
 orientation = portrait
