@@ -22,6 +22,10 @@ permissions:
 env:
   # python-for-android 编译 libffi 时需要 libtool 的 m4 宏，显式指定宏搜索路径
   ACLOCAL_PATH: /usr/share/aclocal
+  # p4a 会丢弃 --requirements 里的版本号，导致 pip 解析到 charset-normalizer 3.5+ 的
+  # android 预编译 wheel；p4a 安装阶段没带 --platform，标签不匹配会直接构建失败。
+  # 用 pip 全局约束兜底，强制回退到只有纯 Python wheel 的 3.3.2。
+  PIP_CONSTRAINT: ${{ github.workspace }}/ci-constraints.txt
 
 jobs:
   apk:
