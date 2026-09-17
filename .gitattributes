@@ -1,0 +1,7 @@
+# 统一按 LF 入库，避免 CI（Linux）与本地（Windows）换行符差异
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ttf binary
+*.ttc binary

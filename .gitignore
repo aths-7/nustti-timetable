@@ -1,0 +1,30 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ---- buildozer / python-for-android 构建产物 ----
+.buildozer/
+bin/
+dist/
+build/
+*.apk
+*.aab
+*.idsig
+.idea/
+.vscode/
+
+# ---- 自检截图与临时产物（只用于本地验证，不入库）----
+screenshots/
+screenshots_temp/
+selfcheck_report.json
+
+# ---- 日志与系统垃圾 ----
+*.log
+*.tmp
+Thumbs.db
+desktop.ini
+.DS_Store

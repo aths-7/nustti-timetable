@@ -1,0 +1,111 @@
+name: Build Android APK
+
+# 触发方式：Actions 页面手动点 Run workflow，或 push 到 main/master 自动构建
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "打包架构"
+        required: false
+        default: "arm64-v8a"
+        type: choice
+        options:
+          - arm64-v8a
+          - armeabi-v7a
+          - arm64-v8a,armeabi-v7a
+  push:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: buildozer android debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    steps:
+      - name: 拉取源码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17 与 buildozer 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk python3-pip python3-venv \
+            autoconf automake libtool pkg-config \
+            zlib1g-dev libncurses-dev libncursesw5-dev libffi-dev libssl-dev \
+            cmake libtool-bin ccache
+          # libtinfo5 只在 Ubuntu 22.04 之前可用，24.04 上已并入 libtinfo6，装不上不算失败
+          sudo apt-get install -y libtinfo5 || sudo apt-get install -y libtinfo-dev || true
+
+      - name: 安装 buildozer / Cython
+        run: |
+          python3 -m pip install --upgrade pip setuptools wheel
+          python3 -m pip install buildozer cython virtualenv
+
+      - name: 打印工具链版本
+        run: |
+          java -version
+          python3 --version
+          buildozer --version
+
+      # 缓存 Android SDK/NDK（约 4~6GB，命中后单次构建可省 10~20 分钟）
+      - name: 缓存 Android SDK / NDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer/android/platform/android-sdk
+            ~/.buildozer/android/platform/android-ndk-r25b
+          key: android-sdk-ndk-r25b-v1
+
+      # 缓存 python-for-android 的中间产物（随 buildozer.spec 变化失效）
+      - name: 缓存 .buildozer 构建目录
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      - name: 执行 buildozer android debug
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+        run: |
+          export ARCHS="${{ github.event.inputs.arch || 'arm64-v8a' }}"
+          # spec 里写死了 arm64-v8a，若手动选择了别的架构就在构建前改掉
+          if [ "$ARCHS" != "arm64-v8a" ]; then
+            sed -i "s/^android.archs = .*/android.archs = $ARCHS/" buildozer.spec
+          fi
+          # 首次构建会下载 SDK/NDK 并全量编译，务必给足时间；
+          # 不加 yes| 管道：spec 里 android.accept_sdk_license = True 已自动接受许可
+          buildozer -v android debug
+
+      - name: 列出产物
+        if: always()
+        run: |
+          echo "--- bin ---"; ls -lh bin/ 2>/dev/null || true
+          echo "--- dist ---"; ls -lh dist/ 2>/dev/null || true
+
+      - name: 上传 APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nustti-timetable-apk
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            bin/*.apk
+            dist/*.apk
+
+      - name: 构建失败时上传日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-logs
+          retention-days: 7
+          path: |
+            .buildozer/android/platform/build-*/build.log
+            .buildozer/android/platform/build-*/dists/*/*.log
+          if-no-files-found: ignore
