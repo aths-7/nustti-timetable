@@ -109,20 +109,66 @@ def _slot_span(course: Dict[str, Any]) -> Tuple[int, int]:
     return start, end
 
 
-def build_grid(courses: List[Dict[str, Any]], week: int) -> Dict[str, Any]:
+def cell_key(weekday: int, start: int, end: int) -> str:
+    """同一格（某天某节次区间）的稳定标识，用作"这格显示哪门课"的持久化键。"""
+    return f"{int(weekday)}-{int(start)}-{int(end)}"
+
+
+def session_time_text(cfg: Dict[str, Any], start: int, end: int) -> str:
+    """第 start~end 小节的起止时间，如 08:00-09:35（作息表缺项时返回空串）。"""
+    times = session_times(cfg)
+    try:
+        begin = str(times[int(start) - 1][0])
+        finish = str(times[int(end) - 1][1])
+    except Exception:
+        return ""
+    return f"{begin}-{finish}" if begin and finish else ""
+
+
+def build_grid(courses: List[Dict[str, Any]], week: int,
+               picks: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """生成整周视图网格。
 
-    返回 {"days": [ {weekday, blocks:[...]} x7 ], "lanes": 每日最大并排数}
-    每个 block: {course, start, end, lane, lanes}
+    同一格（同一天 + 同一节次区间）可能撞上多门课（重修 / 分班 / 合班），
+    这类格子以前是并排挤在一起，字都糊成一团；现在**一格只画一门**：
+        1) 用户在界面上点选过 → 显示他选的那门（picks[cell_key]，随配置持久化）；
+        2) 没点过 → 显示第一门（按节次 + 课程名排序）。
+    其余课程留在 block["options"] 里，点卡片即可换，换完记住。
+
+    返回 {"days": [ {weekday, blocks:[...]} x7 ], "lanes": 每日最大并排数,
+          "conflicts": [同格多课清单], "picked": 命中用户选择的格子数}
+    每个 block: {course, start, end, lane, lanes, key, options, chosen, count}
     """
+    picks = picks if isinstance(picks, dict) else {}
     days: List[Dict[str, Any]] = []
     max_lanes = 1
     color_of: Dict[str, int] = {}
+    conflicts: List[Dict[str, Any]] = []
+    picked_count = 0
     for weekday in range(1, 8):
+        # 先按"节次区间"把同格课程并到一组，再每组只出一张卡（保证一格一门）
+        groups: Dict[Tuple[int, int], List[Dict[str, Any]]] = {}
+        spans: List[Tuple[int, int]] = []
+        for course in courses_of(courses, weekday, week):
+            span = _slot_span(course)
+            if span not in groups:
+                groups[span] = []
+                spans.append(span)
+            groups[span].append(course)
+
         blocks: List[Dict[str, Any]] = []
         lane_end: List[int] = []                    # 每条泳道当前占用的最后一行
-        for course in courses_of(courses, weekday, week):
-            start, end = _slot_span(course)
+        for start, end in spans:
+            options = groups[(start, end)]
+            key = cell_key(weekday, start, end)
+            chosen = options[0]
+            wanted = str(picks.get(key) or "")
+            if wanted:
+                for cand in options:
+                    if str(cand.get("name") or "") == wanted:
+                        chosen = cand
+                        picked_count += 1
+                        break
             lane = 0
             while lane < len(lane_end) and lane_end[lane] >= start:
                 lane += 1
@@ -130,17 +176,25 @@ def build_grid(courses: List[Dict[str, Any]], week: int) -> Dict[str, Any]:
                 lane_end.append(end)
             else:
                 lane_end[lane] = end
-            key = str(course.get("name") or "")
-            if key not in color_of:
-                color_of[key] = len(color_of)
-            blocks.append({"course": course, "start": start, "end": end,
-                           "lane": lane, "color": color_of[key]})
+            name = str(chosen.get("name") or "")
+            if name not in color_of:
+                color_of[name] = len(color_of)
+            blocks.append({"course": chosen, "start": start, "end": end,
+                           "lane": lane, "color": color_of[name], "key": key,
+                           "options": options, "chosen": name, "count": len(options)})
+            if len(options) > 1:
+                conflicts.append({
+                    "key": key, "weekday": weekday, "start": start, "end": end,
+                    "chosen": name,
+                    "options": [str(c.get("name") or "") for c in options],
+                })
         lanes = max(1, len(lane_end))
         max_lanes = max(max_lanes, lanes)
         for block in blocks:
             block["lanes"] = lanes
         days.append({"weekday": weekday, "blocks": blocks})
-    return {"days": days, "lanes": max_lanes, "week": week}
+    return {"days": days, "lanes": max_lanes, "week": week,
+            "conflicts": conflicts, "picked": picked_count}
 
 
 def today_courses(courses: List[Dict[str, Any]], cfg: Dict[str, Any],
@@ -180,6 +234,10 @@ def demo_courses() -> List[Dict[str, Any]]:
         ("操作系统", "吴强", "教2-303", 5, [1, 2], list(range(1, 17))),
         ("计算机网络", "郑华", "教2-110", 5, [5, 6], list(range(1, 13))),
         ("马克思主义基本原理", "何芳", "教1-305", 5, [9, 10], list(range(1, 17))),
+        # ↓ 下面两门是"重修 / 分班撞课"样本（与上面课程同一时段）：同一格两门课，
+        #   用来验证"一格只显示一门 + 点卡片可切换 + 选择持久化"。
+        ("大学英语(3)", "李梅", "外语楼-302", 3, [5, 6], list(range(1, 13))),
+        ("计算机网络(实验)", "郑华", "机房-301", 5, [5, 6], list(range(1, 13))),
     ]
     out: List[Dict[str, Any]] = []
     for name, teacher, room, weekday, sessions, weeks in raw:

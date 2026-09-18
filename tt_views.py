@@ -25,6 +25,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
+from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
@@ -53,6 +54,8 @@ class Ctx:
         self.term = str(cfg.get("term") or "")
         self.today = date.today().isoweekday()
         self._color_idx: Dict[str, int] = {}
+        # 同一格撞多门课时，点课程卡由主程序弹窗让主人选"这格显示哪门"（选择持久化）
+        self.pick_cb: Optional[Any] = None
 
     def color_index(self, name: str) -> int:
         """课程名 → 稳定的色板下标（同一课程在周视图/今日视图颜色一致）。"""
@@ -272,40 +275,68 @@ def _single_line(lbl: Label) -> Label:
 
 
 class CourseBox(BoxLayout):
-    """课程色块：圆角 + 白字（颜色按课程名稳定分配，与今日视图共用色板）。"""
+    """课程色块：圆角 + 白字（颜色按课程名稳定分配，与今日视图共用色板）。
+
+    v1.0.2 起：
+        * 卡面按「课程名 / 教室 / 上课时间 / 教师（或"共 N 门·点此切换"）」分行显示，
+          教室与上课时间必显示；
+        * 同一格撞上多门课时不再并排挤压，只画一门，右上角小折角提示"还有别的课"，
+          点卡片即可在弹窗里换一门（选择由主程序写入配置持久化）。
+    """
 
     def __init__(self, course: Dict[str, Any], color_index: int, ctx: Ctx,
-                 compact: bool = False, **kwargs):
+                 compact: bool = False, options: Optional[List[Dict[str, Any]]] = None,
+                 pick_key: str = "", chosen: str = "", time_text: str = "",
+                 on_pick=None, **kwargs):
         super().__init__(orientation="vertical", padding=(u(3), u(2)),
                          spacing=u(1), size_hint=(None, None), **kwargs)
         bg, fg = course_palette(color_index)
         self.course = course
         self.ctx = ctx
         self.compact = compact
+        self.options = [c for c in (options or [course])]
+        self.multi = len(self.options) > 1
+        self.pick_key = str(pick_key or "")
+        self.chosen = str(chosen or course.get("name") or "")
+        self.on_pick = on_pick
         self._bg, self._fg = bg, fg
         self.card_color = bg
         with self.canvas.before:
             self._color = Color(*rgba(bg))
             self._rect = RoundedRectangle(radius=[u(7)], pos=self.pos, size=self.size)
+        # 折角小标记：只有"这格还有别的课"时才画，提示可以点开切换
+        with self.canvas.after:
+            self._flag_color = Color(*rgba(WHITE, 0.0))
+            self._flag = Triangle(points=[0, 0, 0, 0, 0, 0])
         self.bind(pos=self._sync, size=self._fit)
         self._subs: List[Label] = []
+        self._line_specs: List[Tuple[str, float, float]] = []
 
         title = _label(str(course.get("name") or ""), ctx,
                        11.5 if not compact else 10.5, bold=True, halign="center",
                        color=fg)
         self.title = _single_line(title)
         self.add_widget(title)
+
+        # 副行：(文字, 设计字号, 透明度)。顺序即优先级 —— 格子小的时候从后往前砍。
+        lines: List[Tuple[str, float, float]] = []
         if not compact:
             room = str(course.get("room") or "")
             if room:
-                line = _single_line(_label(room, ctx, 9.5, halign="center", color=fg, alpha=0.92))
-                self.add_widget(line)
-                self._subs.append(line)
+                lines.append((room, 9.5, 0.95))
+            if str(time_text or ""):
+                lines.append((str(time_text), 9.5, 0.92))
+            if self.multi:
+                lines.append((f"共{len(self.options)}门·点此切换", 8.5, 0.9))
             teacher = str(course.get("teacher") or "")
             if teacher:
-                line = _single_line(_label(teacher, ctx, 9, halign="center", color=fg, alpha=0.82))
-                self.add_widget(line)
-                self._subs.append(line)
+                lines.append((teacher, 9, 0.82))
+        self._line_specs = lines
+        for text, size, alpha in lines:
+            lbl = _single_line(_label(text, ctx, size, halign="center", color=fg,
+                                      alpha=alpha))
+            self.add_widget(lbl)
+            self._subs.append(lbl)
         self._fit()
 
     def _fit(self, *_):
@@ -313,10 +344,12 @@ class CourseBox(BoxLayout):
 
         Kivy 的 Label 不做裁剪 —— 字号大于控件高度时文字会画到卡片外面（看起来像
         被上边缘切掉），所以这里显式给出每行高度，并把字号限制在 高度/1.35 以内。
+        副行里"教室 + 上课时间"排在最前面，格子再小也优先保证这两项显示出来。
         """
         title = getattr(self, "title", None)
         if title is None:
             return
+        self._sync_flag()
         wide = self.width >= u(34)
         h = self.height
         pad_x = u(3) if wide else u(1)
@@ -324,21 +357,32 @@ class CourseBox(BoxLayout):
         self.padding = (pad_x, pad_y)
         avail = max(u(8), h - 2.0 * pad_y)
         base = 10.5 if self.compact else 11.5
+        subs = list(getattr(self, "_subs", []) or [])
+        specs = list(getattr(self, "_line_specs", []) or [])
 
-        show_sub = bool(self._subs) and wide and avail >= u(40)
+        # 一格跨 2 小节（约 100 设计单位）时四行都放得下；只有 1 小节的窄格退到两行
+        if not wide or avail < u(30):
+            n_sub = 0
+        elif avail < u(78):
+            n_sub = min(len(subs), 2)
+        else:
+            n_sub = min(len(subs), 4)
+
         text_w = max(1.0, self.width - 2.0 * pad_x)
-        if show_sub:
-            title_h = avail * 0.40
-            sub_h = avail * 0.30
-            for lbl in self._subs:
-                lbl.size_hint_y = None
-                lbl.height = sub_h
-                lbl.opacity = 1.0
-                lbl.font_size = self._fit_font(lbl.text, text_w, sub_h, self.ctx.fs(9.5))
+        if n_sub:
+            title_h = avail * 0.42
+            sub_h = (avail - title_h) / n_sub
         else:
             title_h = avail
-            for lbl in self._subs:
-                lbl.size_hint_y = None
+            sub_h = 0.0
+        for idx, lbl in enumerate(subs):
+            size = specs[idx][1] if idx < len(specs) else 9.5
+            lbl.size_hint_y = None
+            if idx < n_sub:
+                lbl.height = sub_h
+                lbl.opacity = 1.0
+                lbl.font_size = self._fit_font(lbl.text, text_w, sub_h, self.ctx.fs(size))
+            else:
                 lbl.height = 0.0
                 lbl.opacity = 0.0
         title.size_hint_y = None
@@ -361,10 +405,32 @@ class CourseBox(BoxLayout):
     def _sync(self, *_):
         self._rect.pos = self.pos
         self._rect.size = self.size
+        self._sync_flag()
+
+    def _sync_flag(self, *_):
+        """右上角小折角：标出"这一格还有别的课"，点一下可换课。"""
+        side = min(u(9), self.width * 0.26, self.height * 0.26)
+        if self.multi and side > 1:
+            self._flag_color.rgba = rgba(WHITE, 0.6)
+            self._flag.points = [self.right, self.top, self.right - side, self.top,
+                                 self.right, self.top - side]
+        else:
+            self._flag_color.rgba = rgba(WHITE, 0.0)
+            self._flag.points = [0, 0, 0, 0, 0, 0]
+
+    def on_touch_down(self, touch):
+        """同一格有多门课时，点卡片 → 弹窗选这一格显示哪门课。"""
+        if self.multi and self.on_pick is not None and self.collide_point(*touch.pos):
+            self.on_pick(self)
+            return True
+        return super().on_touch_down(touch)
 
     def describe(self) -> Dict[str, Any]:
         return {"name": self.course.get("name"), "teacher": self.course.get("teacher"),
                 "room": self.course.get("room"), "color": self.card_color,
+                "key": self.pick_key, "chosen": self.chosen, "count": len(self.options),
+                "options": [str(c.get("name") or "") for c in self.options],
+                "lines": [lbl.text for lbl in self._subs if lbl.opacity > 0],
                 "size": (round(self.width), round(self.height))}
 
 
@@ -380,7 +446,9 @@ class WeekGrid(FloatLayout):
         self.axis_w = 0.0 if compact else u(34)
         self.boxes: List[CourseBox] = []
         self._axis: List[Label] = []
-        self.model = tt_model.build_grid(ctx.courses, self.week)
+        # 同一格撞多门课时，这格显示哪门由主人的点选决定（存在配置里，重启仍生效）
+        self.model = tt_model.build_grid(ctx.courses, self.week,
+                                         getattr(ctx, "picks", None))
 
         times = tt_model.session_times(ctx.cfg)
         for idx, pair in enumerate(times, start=1):
@@ -392,9 +460,17 @@ class WeekGrid(FloatLayout):
 
         for day in self.model["days"]:
             for block in day["blocks"]:
-                box = CourseBox(block["course"], ctx.color_index(block["course"].get("name")),
-                                ctx, compact=compact)
-                box.lane, box.lanes = block["lane"], block["lanes"]
+                course = block["course"]
+                name = str(course.get("name") or "")
+                # 一格一门：同格多余的课程收进 options，点卡片弹窗切换（不再并排挤压）
+                box = CourseBox(course, ctx.color_index(name), ctx, compact=compact,
+                                options=block.get("options") or [course],
+                                pick_key=str(block.get("key") or ""),
+                                chosen=str(block.get("chosen") or name),
+                                time_text=tt_model.session_time_text(ctx.cfg, block["start"],
+                                                                    block["end"]),
+                                on_pick=getattr(ctx, "pick_cb", None))
+                box.lane, box.lanes = 0, 1
                 box.weekday, box.start, box.end = day["weekday"], block["start"], block["end"]
                 self.add_widget(box)
                 self.boxes.append(box)
@@ -449,7 +525,9 @@ class WeekGrid(FloatLayout):
                 "axis_w_frac": round(self.axis_w / w, 4),
                 "col_w_frac": round(col_w / w, 4),
                 "today_wd": self.today_wd, "blocks": len(self.boxes),
-                "lanes": self.model.get("lanes", 1)}
+                "lanes": self.model.get("lanes", 1),
+                "conflicts": len(self.model.get("conflicts") or []),
+                "picked": int(self.model.get("picked") or 0)}
 
 
 class WeekView(BoxLayout):
@@ -473,6 +551,7 @@ class WeekView(BoxLayout):
                 "dates": [d.strftime("%m-%d") if d else "" for d in self.dates],
                 "today_weekday": self.today_wd,
                 "blocks": len(self.grid.boxes), "lanes": self.grid.model.get("lanes", 1),
+                "conflicts": self.grid.model.get("conflicts") or [],
                 "metrics": self.grid.metrics(),
                 "courses": [b.describe() for b in self.grid.boxes]}
 
@@ -543,7 +622,11 @@ class TodayView(BoxLayout):
         left.add_widget(_single_line(_label(f"第 {item['start']}-{item['end']} 节", ctx, 9.5, "sub")))
         mid = BoxLayout(orientation="vertical")
         mid.add_widget(_single_line(_label(str(item["course"].get("name") or ""), ctx, 13, bold=True)))
-        detail = " ".join(x for x in (item["course"].get("room"), item["course"].get("teacher")) if x)
+        # 卡片副行：教室 + 上课时间（第 X-Y 节对应的起止时刻）+ 教师
+        span = (f"{item['begin']}-{item['finish']}"
+                if item.get("begin") and item.get("finish") else "")
+        detail = " ".join(x for x in (item["course"].get("room"), span,
+                                      item["course"].get("teacher")) if x)
         mid.add_widget(_single_line(_label(detail or "-", ctx, 10.5, "sub")))
         right = _single_line(_label(item["state"], ctx, 10.5, "accent", halign="center"))
         right.size_hint_x = None
@@ -626,8 +709,8 @@ class TabItem(BoxLayout):
     """单个 Tab：图标 + 文字，选中蓝色高亮。"""
 
     def __init__(self, key: str, text: str, icon: str, ctx: Ctx, on_press, **kwargs):
-        super().__init__(orientation="vertical", size_hint_y=None, height=u(46),
-                         padding=(0, u(5)), spacing=u(1), **kwargs)
+        super().__init__(orientation="vertical", size_hint_y=None, height=u(51),
+                         padding=(0, u(4)), spacing=u(1), **kwargs)
         self.key = key
         self.on_press = on_press
         holder = BoxLayout(orientation="horizontal")
@@ -657,8 +740,8 @@ class TabBar(BoxLayout):
     """底部 Tab 栏：白色底 + 顶部细线，当前模式高亮。"""
 
     def __init__(self, ctx: Ctx, active: str, on_select, **kwargs):
-        super().__init__(orientation="horizontal", size_hint_y=None, height=u(56),
-                         padding=(u(4), 0), **kwargs)
+        super().__init__(orientation="horizontal", size_hint_y=None, height=u(64),
+                         padding=(u(4), u(5)), spacing=u(4), **kwargs)
         self.on_select = on_select
         self.items: Dict[str, TabItem] = {}
         with self.canvas.before:
@@ -687,3 +770,51 @@ class TabBar(BoxLayout):
         self._rect.size = self.size
         self._line.pos = (self.x, self.y + self.height - max(1.0, u(0.6)))
         self._line.size = (self.width, max(1.0, u(0.6)))
+
+
+class CellPickDialog:
+    """同一格撞多门课时的"这一格显示哪一门"选择弹窗（选完即写入配置，重启仍生效）。"""
+
+    def __init__(self, key: str, options: List[Dict[str, Any]], chosen: str, ctx: Ctx,
+                 on_pick):
+        self.key = str(key)
+        self.on_pick = on_pick
+        box = BoxLayout(orientation="vertical", spacing=u(8), padding=u(10))
+        box.add_widget(_label("这一格有多门课，选一门显示：", ctx, 12, "sub", bold=True,
+                              size_hint_y=None, height=u(26)))
+        scroll = ScrollView(do_scroll_x=False)
+        body = BoxLayout(orientation="vertical", size_hint_y=None, spacing=u(8))
+        body.bind(minimum_height=body.setter("height"))
+        for course in options:
+            name = str(course.get("name") or "")
+            detail = " · ".join(str(x) for x in (course.get("room"), course.get("teacher")) if x)
+            text = f"{name}\n{detail}" if detail else name
+            active = name == str(chosen or "")
+            btn = Button(text=text, font_name=ctx.font, font_size=ctx.fs(11.5),
+                         halign="center", valign="middle", size_hint_y=None, height=u(50),
+                         background_normal="", background_down="",
+                         background_color=rgba(THEME["accent"] if active else THEME["panel3"]))
+            btn.color = rgba(WHITE) if active else ctx.text_color("text")
+            btn.bind(on_release=lambda _b, n=name: self._choose(n))
+            body.add_widget(btn)
+        scroll.add_widget(body)
+        box.add_widget(scroll)
+        cancel = Button(text="取消", font_name=ctx.font, font_size=ctx.fs(11.5),
+                        size_hint_y=None, height=u(38), background_normal="",
+                        background_color=rgba(THEME["panel3"]))
+        cancel.color = ctx.text_color("text")
+        cancel.bind(on_release=lambda *_: self.popup.dismiss())
+        box.add_widget(cancel)
+        self.popup = Popup(title="选择这一格显示的课", title_font=ctx.font, content=box,
+                           size_hint=(0.86, 0.62), auto_dismiss=True)
+
+    def open(self) -> None:
+        self.popup.open()
+
+    def _choose(self, name: str) -> None:
+        try:
+            self.popup.dismiss()
+        except Exception:
+            pass
+        if self.on_pick:
+            self.on_pick(self.key, name)

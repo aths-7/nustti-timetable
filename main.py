@@ -34,7 +34,7 @@ import threading
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 IS_ANDROID = bool(os.environ.get("ANDROID_PRIVATE") or os.environ.get("ANDROID_ARGUMENT"))
 
@@ -88,9 +88,10 @@ import tt_theme
 from tt_bg import BASE_BG, BackgroundLayer
 from tt_settings import CaptchaDialog, SettingsOverlay
 from tt_theme import THEME, rgba
-from tt_views import Ctx, Panel, TabBar, TodayView, TopBar, WeekView, _label
+from tt_views import (CellPickDialog, Ctx, Panel, TabBar, TodayView, TopBar, WeekView,
+                      _label)
 
-DEFAULT_VERSION = "1.0.1-kivy"
+DEFAULT_VERSION = "1.0.2-kivy"
 SELFCHECK = False
 
 # 桌面预览窗口（手机比例），保证 Windows 上实跑与 Android 观感一致
@@ -131,6 +132,12 @@ def read_version() -> str:
 VERSION = read_version()
 
 
+def looks_like_time(text: str) -> bool:
+    """是否是 '08:00-09:35' 这类"上课时间"文本（自检判据用）。"""
+    parts = str(text or "").split("-")
+    return len(parts) == 2 and all(":" in p.strip() for p in parts)
+
+
 class TimetableApp(App):
     title = "南泰课表"
 
@@ -153,6 +160,9 @@ class TimetableApp(App):
         self._ui_width = 0.0           # 当前界面尺寸基准（窗口宽度），用于识别尺寸变化
         self._resize_guard = False
         self._settings: Optional[SettingsOverlay] = None
+        self._pick_dialog: Optional[Any] = None          # 同格多课的"显示哪门"弹窗
+        self._sc_checks: Dict[str, Any] = {}             # 自检里的功能性检查结果
+        self._sc_picks_backup: Optional[Dict[str, str]] = None
         self._sc_steps: List[Any] = []
         self._sc_index = 0
         self._sc_dir = ""
@@ -180,11 +190,11 @@ class TimetableApp(App):
             self.mode = "week"
         if not IS_ANDROID:
             # 先定窗口尺寸再算界面尺寸：u() 按窗口宽度换算，顺序反了会用到旧的宽度
-            Window.size = DESKTOP_WINDOW
+            Window.size = self.desired_window_size()
         Window.clearcolor = rgba(BASE_BG, 1)
         self.density = calibrate_metrics()
         tt_theme.apply_font(str(self.cfg.get("font_family") or ""))
-        self.ctx = Ctx(self.cfg, self.courses, self.version)
+        self.ctx = self.make_ctx()
         self.display_week = int(self.ctx.week or 1)
 
         root = FloatLayout()
@@ -239,8 +249,52 @@ class TimetableApp(App):
     # ------------------------------------------------------------------ #
     # 界面组装
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def desired_window_size() -> Tuple[int, int]:
+        """桌面预览窗口尺寸；TT_WINDOW_SIZE=1080x2400 可用来复现高分屏排布（自检用）。"""
+        raw = str(os.environ.get("TT_WINDOW_SIZE") or "").strip().lower()
+        if "x" in raw:
+            try:
+                w, h = (int(float(v)) for v in raw.split("x", 1))
+                if w > 0 and h > 0:
+                    return (w, h)
+            except Exception as exc:
+                Logger.warning(f"main: TT_WINDOW_SIZE 解析失败 {raw}: {exc}")
+        return DESKTOP_WINDOW
+
     def make_ctx(self) -> Ctx:
-        return Ctx(self.cfg, self.courses, self.version)
+        ctx = Ctx(self.cfg, self.courses, self.version)
+        # 同一格撞多门课（重修/分班）时，"这格显示哪门"由主人的点选决定，
+        # 记录写在配置里（cell_picks），换周/重启/换机型后依然生效。
+        ctx.picks = self.cell_picks()
+        ctx.pick_cb = self.change_cell_pick
+        return ctx
+
+    def cell_picks(self) -> Dict[str, str]:
+        """每格选课记录 { '星期-起节-止节': 课程名 }（配置损坏时回落空表）。"""
+        raw = self.cfg.get("cell_picks")
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): str(v) for k, v in raw.items() if str(v or "")}
+
+    def change_cell_pick(self, box) -> None:
+        """点"共 N 门"的课程卡 → 弹窗让主人选这一格显示哪门课（选完即持久化）。"""
+        options = list(getattr(box, "options", None) or [])
+        key = str(getattr(box, "pick_key", "") or "")
+        if len(options) < 2 or not key or SELFCHECK:
+            return
+        self._pick_dialog = CellPickDialog(key, options, str(getattr(box, "chosen", "")),
+                                           self.ctx, self.apply_cell_pick)
+        self._pick_dialog.open()
+
+    def apply_cell_pick(self, key: str, name: str) -> None:
+        """把"这一格显示哪门课"写进配置并立即重建界面。"""
+        picks = self.cell_picks()
+        picks[str(key)] = str(name)
+        self.cfg["cell_picks"] = picks
+        store.save_config(self.cfg)
+        self.rebuild()
+        self.toast(f"这一格已改为显示「{name}」")
 
     def rebuild(self) -> None:
         """按当前配置整体重建界面（字体族/字号/颜色/换周后立即生效）。
@@ -486,9 +540,15 @@ class TimetableApp(App):
         os.makedirs(outdir, exist_ok=True)
         self._sc_steps = [
             ("week", lambda: self.set_view("week")),
+            # 同格撞多课：程序化把第一处撞课切到"另一门"再重建，截图验证"一格一门 + 换课生效"
+            ("week_switched", self._sc_cell_pick_sim),
+            # 点"共 N 门"的卡片时弹出来的"选一门显示"弹窗
+            ("cell_pick_dialog", self._sc_open_pick_dialog),
             ("today", lambda: self.set_view("today")),
             ("week_compact", lambda: self.set_view("week_compact")),
             ("settings", self.open_settings),
+            # 设置页滚到底部再截一张：1080+ 高分屏最容易在页脚附近堆叠重叠
+            ("settings_bottom", self._sc_scroll_settings),
         ]
         Clock.schedule_once(self._sc_run_step, 1.2)
         Clock.schedule_once(self._sc_watchdog, 90)      # 兜底：任何一步卡死也能收尾
@@ -541,8 +601,20 @@ class TimetableApp(App):
                 entry.update(widget.describe())
         except Exception as exc:
             entry["describe_error"] = str(exc)
-        self._sc_report.setdefault("steps", []).append(entry)
         if name == "settings":
+            # 设置页 / 我的页：把行高与行距量出来，作为"1080+ 不堆叠重叠"的客观判据
+            try:
+                entry["settings_spacing"] = self._settings_spacing_check()
+            except Exception as exc:
+                entry["settings_spacing"] = {"ok": False, "error": str(exc)}
+        self._sc_report.setdefault("steps", []).append(entry)
+        if name.startswith("cell_pick_dialog") and self._pick_dialog is not None:
+            try:
+                self._pick_dialog.popup.dismiss()
+            except Exception as exc:
+                self._sc_report.setdefault("errors", []).append(f"close pick dialog: {exc}")
+            self._pick_dialog = None
+        if name.startswith("settings"):
             try:
                 self.close_settings()
             except Exception as exc:
@@ -554,6 +626,14 @@ class TimetableApp(App):
         if self._sc_done:
             return
         self._sc_done = True
+        # 自检步骤里"模拟换课"只改了内存配置，收尾时还原，避免写进主人的真实配置
+        if self._sc_picks_backup is not None:
+            self.cfg["cell_picks"] = dict(self._sc_picks_backup)
+            self._sc_picks_backup = None
+        self._sc_checks.setdefault("cell_pick", self._cell_pick_check())
+        for step in self._sc_report.get("steps", []):
+            if step.get("settings_spacing"):
+                self._sc_checks["settings_spacing"] = step["settings_spacing"]
         layout = self._describe_layout()
         report = {
             "app": "NUSTTI_Timetable_Kivy",
@@ -578,8 +658,16 @@ class TimetableApp(App):
             "background": self.bg.described_state() if self.bg else {},
             "steps": self._sc_report.get("steps", []),
             "errors": self._sc_report.get("errors", []),
+            "checks": self._sc_checks,
         }
         week_steps = [s for s in report["steps"] if s.get("mode") == "week"]
+        # 课程卡副行里是否真的带上了"教室 / 上课时间"（本轮修复点之一）
+        cards = [c for s in report["steps"] for c in (s.get("courses") or [])]
+        room_ok = any(str(c.get("room") or "").strip() for c in cards)
+        time_ok = any(any(looks_like_time(ln) for ln in (c.get("lines") or []))
+                      for c in cards)
+        cell = self._sc_checks.get("cell_pick") or {}
+        spacing = self._sc_checks.get("settings_spacing") or {}
         report["assertions"] = {
             "views_rendered": len(report["steps"]) == len(self._sc_steps),
             "screenshots_saved": all(s.get("bytes", 0) > 0 for s in report["steps"]),
@@ -593,10 +681,27 @@ class TimetableApp(App):
             # 防止再次出现"手机端显示比例异常"（dp 随像素密度变化导致的失衡）。
             "layout_ratios_ok": bool(layout.get("ratios_ok")),
             "grid_columns_ok": bool(layout.get("columns_ok")),
+            # ---- 本轮三处修复的回归判据 ----
+            # ① 同一格多门课：一格只画一张卡，且点选能换课、选择能持久化
+            "cell_single_card_ok": bool(cell.get("single_card_ok")),
+            "cell_pick_switch_ok": bool(cell.get("switch_ok")),
+            "cell_pick_persist_ok": bool(cell.get("persist_ok")),
+            # ② 课程卡副行同时给出教室与上课时间（第 X-Y 节的起止时刻）
+            "card_room_ok": bool(room_ok),
+            "card_time_ok": bool(time_ok),
+            # ③ 1080+ 分辨率下设置页/我的页各项行高与行距足够，不会堆叠重叠
+            "settings_spacing_ok": bool(spacing.get("ok")),
         }
         report["assertions"]["all_layout_ok"] = bool(
             report["assertions"]["layout_ratios_ok"] and report["assertions"]["grid_columns_ok"]
             and report["assertions"]["metrics_ok"])
+        report["assertions"]["all_fixes_ok"] = bool(
+            report["assertions"]["cell_single_card_ok"]
+            and report["assertions"]["cell_pick_switch_ok"]
+            and report["assertions"]["cell_pick_persist_ok"]
+            and report["assertions"]["card_room_ok"]
+            and report["assertions"]["card_time_ok"]
+            and report["assertions"]["settings_spacing_ok"])
         path = os.path.join(self._sc_dir, "selfcheck_report.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(report, fh, ensure_ascii=False, indent=2)
@@ -610,6 +715,103 @@ class TimetableApp(App):
             self.stop()
         except Exception as exc:      # 关窗时 SDL2/ctypes 噪声，不影响已落盘产物
             print(f"[SELFCHECK] 退出噪声：{type(exc).__name__}: {exc}", flush=True)
+
+    def _cell_pick_check(self) -> Dict[str, Any]:
+        """同格多课的回归判据：①一格只出一张卡；②点选切换能生效；③选择能持久化。"""
+        week = int(self.display_week or tt_model.current_week(self.cfg) or 1)
+        base = tt_model.build_grid(self.courses, week, {})
+        out: Dict[str, Any] = {"conflicts": len(base.get("conflicts") or []),
+                               "single_card_ok": True, "switch_ok": False,
+                               "persist_ok": False, "key": "", "target": ""}
+        # ① 一格一门：同一次渲染里不存在两张卡共用同一个格子键
+        keys = [str(b.get("key")) for day in base["days"] for b in day["blocks"]]
+        out["cells"] = len(keys)
+        out["single_card_ok"] = bool(keys) and len(keys) == len(set(keys))
+        conflicts = base.get("conflicts") or []
+        if not conflicts:
+            return out
+        item = conflicts[0]
+        key = str(item.get("key") or "")
+        others = [n for n in (item.get("options") or []) if n != item.get("chosen")]
+        if not key or not others:
+            return out
+        out["key"], out["target"] = key, others[-1]
+        # ② 换课生效：传入 picks 后，这格必须显示被选中的那门
+        switched = tt_model.build_grid(self.courses, week, {key: out["target"]})
+        for day in switched["days"]:
+            for block in day["blocks"]:
+                if str(block.get("key")) == key:
+                    out["switch_ok"] = str(block.get("chosen")) == out["target"]
+        # ③ 持久化：写盘 → 重新读配置，确认选择还在（测完把原配置还原，不污染主人数据）
+        original = store.load_config()
+        try:
+            cfg = dict(original)
+            picks = dict(cfg.get("cell_picks") or {})
+            picks[key] = out["target"]
+            cfg["cell_picks"] = picks
+            store.save_config(cfg)
+            out["persist_ok"] = str((store.load_config().get("cell_picks") or {}).get(key)
+                                    or "") == out["target"]
+        finally:
+            store.save_config(original)
+        out["ok"] = bool(out["single_card_ok"] and out["switch_ok"] and out["persist_ok"])
+        return out
+
+    def _sc_cell_pick_sim(self) -> None:
+        """自检用：把第一处撞课的格子切到另一门并重建（截图留证，收尾时还原内存配置）。"""
+        check = self._cell_pick_check()
+        self._sc_checks["cell_pick"] = check
+        if not (check.get("key") and check.get("target")):
+            return
+        self._sc_picks_backup = dict(self.cell_picks())
+        picks = self.cell_picks()
+        picks[str(check["key"])] = str(check["target"])
+        self.cfg["cell_picks"] = picks
+        self.rebuild()
+
+    def _sc_open_pick_dialog(self) -> None:
+        """自检用：打开"这一格显示哪门课"弹窗并截图（模拟主人点卡片的效果）。"""
+        self.set_view("week")
+        week = int(self.display_week or tt_model.current_week(self.cfg) or 1)
+        base = tt_model.build_grid(self.courses, week, self.cell_picks())
+        conflicts = base.get("conflicts") or []
+        if not conflicts:
+            return
+        item = conflicts[0]
+        day = next((d for d in base["days"] if d["weekday"] == item["weekday"]), None)
+        block = next((b for b in (day or {}).get("blocks", [])
+                      if str(b.get("key")) == str(item["key"])), None)
+        if not block:
+            return
+        self._pick_dialog = CellPickDialog(block["key"], block["options"],
+                                           str(block.get("chosen") or ""), self.ctx,
+                                           lambda *_: None)
+        self._pick_dialog.open()
+
+    def _sc_scroll_settings(self) -> None:
+        """自检用：打开设置页并滚到底部（拍下半屏各项间距）。"""
+        self.open_settings()
+        panel = self._settings
+        scroll = getattr(panel, "scroll", None)
+        if scroll is not None:
+            scroll.scroll_y = 0.0
+
+    def _settings_spacing_check(self) -> Dict[str, Any]:
+        """设置页 / 我的页行高与行距是否拉开（1080+ 高分屏堆叠重叠的回归判据）。"""
+        panel = self._settings
+        if panel is None:
+            return {"ok": False, "error": "设置面板未打开"}
+        body = getattr(panel, "body", None)
+        if body is None:
+            return {"ok": False, "error": "拿不到设置页行容器"}
+        unit = max(1.0, float(tt_theme.unit_scale()))
+        heights = [float(w.height) for w in body.children if float(w.height) > 0]
+        gap = float(body.spacing)
+        min_row = min(heights) if heights else 0.0
+        return {"ok": bool(gap >= unit * 6 and min_row >= unit * 18),
+                "rows": len(body.children), "min_row": round(min_row, 1),
+                "gap": round(gap, 1), "unit": round(unit, 4),
+                "min_row_required": round(unit * 18, 1), "gap_required": round(unit * 6, 1)}
 
     def _describe_layout(self) -> Dict[str, Any]:
         """各区域高度/宽度占屏比（比例异常的客观判据）。"""

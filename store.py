@@ -106,6 +106,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "font_scale": 1.0,              # 字号缩放 0.8~1.6（1.0 = 内置默认字号）
     "font_color": "",               # 文字颜色（空 = 跟随主题配色；非空则覆盖正文/次要/暗淡文字）
     "minimize_to_tray": True,       # 是否启用系统托盘（关闭时托盘按钮与托盘图标都不出现）
+    # 同一格撞上多门课（重修/分班）时该格显示哪一门：{"星期-起节-止节": 课程名}
+    # 由课表页点课程卡选择并写入，跨周共用同一个选择（课程学期内不变）
+    "cell_picks": {},
 }
 
 
@@ -176,6 +179,12 @@ def load_config() -> Dict[str, Any]:
     color = str(cfg.get("font_color") or "").strip()
     cfg["font_color"] = color if _is_hex_color(color) else ""
     cfg["minimize_to_tray"] = bool(cfg.get("minimize_to_tray", True))
+    picks = cfg.get("cell_picks")
+    if isinstance(picks, dict):
+        cfg["cell_picks"] = {str(k): str(v).strip() for k, v in picks.items()
+                             if str(k).strip() and str(v).strip()}
+    else:
+        cfg["cell_picks"] = {}
     return cfg
 
 
