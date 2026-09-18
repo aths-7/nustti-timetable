@@ -16,7 +16,6 @@ from kivy.clock import Clock
 from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
-from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 from kivy.uix.label import Label
@@ -30,12 +29,14 @@ from kivy.uix.widget import Widget
 
 import store
 import tt_bg
+import tt_bgpick
 import tt_model
 import tt_theme
 from tt_theme import (THEME, PRESET_FONT_COLORS, available_families, is_hex_color, rgba, u,
                       unit_scale)
 from tt_views import Ctx, _label
 
+# 仅作历史保留：真正的图片后缀白名单在 tt_bgpick.IMAGE_EXTS（选择器统一走那边）
 IMAGE_FILTERS = ["*.jpg", "*.jpeg", "*.png", "*.webp", "*.bmp", "*.gif"]
 
 # --------------------------------------------------------------------------- #
@@ -125,6 +126,8 @@ class SettingsOverlay(FloatLayout):
                   size=lambda *_: setattr(self._scrim, "size", self.size))
         self._ink = str(self.cfg.get("font_color") or "")
         self._bg_path = str(self.cfg.get("bg_image") or "")
+        self.bg_picker = None       # 自研背景选择器实例（自检要读它的状态）
+        self.bg_anchor = None       # 「自定义背景」一节的锚点（自检滚动截图用）
         self._build()
 
     # ------------------------------------------------------------------ #
@@ -202,8 +205,8 @@ class SettingsOverlay(FloatLayout):
         self._pick_color(self._ink)
 
         # --- 背景 ---
-        body.add_widget(_section("背景图", ctx))
-        self.bg_label = _label(self._bg_path or "（未设置，使用深色外观）", ctx, 10, "dim")
+        body.add_widget(_section("自定义背景", ctx))
+        self.bg_label = _label(self._bg_path or "（未设置，使用默认浅灰底）", ctx, 10, "dim")
         self.bg_label.shorten = True
         self.bg_label.shorten_from = "left"
         self.bg_label.size_hint_y = None
@@ -211,10 +214,22 @@ class SettingsOverlay(FloatLayout):
         row = BoxLayout(orientation="horizontal", size_hint_y=None, height=u(ROW_H),
                         spacing=u(6))
         row.add_widget(_label("图片", ctx, 11.5, "sub", halign="left"))
-        row.add_widget(_button("选择", ctx, self._choose_bg, 60))
-        row.add_widget(_button("清除", ctx, self._clear_bg, 60))
+        row.add_widget(_button("从相册选择" if tt_bgpick.IS_ANDROID else "挑图",
+                               ctx, self._pick_gallery, 84 if tt_bgpick.IS_ANDROID else 56))
+        row.add_widget(_button("浏览", ctx, self._choose_bg, 56))
+        row.add_widget(_button("清除", ctx, self._clear_bg, 56))
         body.add_widget(row)
         body.add_widget(self.bg_label)
+        self.bg_anchor = row
+        self.bg_scale = self._slider_row(body, "图片缩放", ctx,
+                                        tt_bg.SCALE_MIN, tt_bg.SCALE_MAX, 1,
+                                        self.cfg.get("bg_scale", 100), "{:.0f}%",
+                                        on_change=self._preview_scale)
+        self.bg_alpha = self._slider_row(body, "透明度", ctx,
+                                        tt_bg.ALPHA_MIN, tt_bg.ALPHA_MAX, 1,
+                                        self.cfg.get("bg_alpha", 100), "{:.0f}%",
+                                        on_change=self._preview_alpha)
+        body.add_widget(_hint("100% = 原图铺满（不变形）；往下调越来越透，露出底色", ctx))
         self.veil = self._slider_row(body, "蒙版强度", ctx, 0, 100, 1,
                                      self.cfg.get("bg_veil", 60), "{:.0f}",
                                      on_change=self._preview_veil)
@@ -267,33 +282,57 @@ class SettingsOverlay(FloatLayout):
         self.color_preview.text = "跟随主题" if not self._ink else self._ink
         self.color_preview.color = rgba(self._ink) if self._ink else rgba(THEME["text"])
 
-    def _choose_bg(self) -> None:
-        start = os.path.dirname(self._bg_path) or os.path.expanduser("~")
-        popup = Popup(title="选择背景图片", size_hint=(0.92, 0.92), title_font=self.ctx.font)
+    def _choose_bg(self, extra_dirs=None) -> None:
+        """打开自研背景选择器（替代手机端必然空列表的 FileChooserListView）。"""
+        self.bg_picker = tt_bgpick.BackgroundPickerDialog(
+            self.ctx, current=self._bg_path, on_pick=self._apply_picked_bg,
+            extra_dirs=extra_dirs)
+        self.bg_picker.open()
 
-        def picked(selection):
-            if selection:
-                self._bg_path = selection[0]
-                self.bg_label.text = self._bg_path
-            popup.dismiss()
+    def scroll_to_bg(self) -> bool:
+        """自检用：把设置页滚到「自定义背景」一节（截图留证）。"""
+        scroll = getattr(self, "scroll", None)
+        anchor = getattr(self, "bg_anchor", None)
+        if scroll is None or anchor is None:
+            return False
+        try:
+            scroll.scroll_to(anchor, padding=u(12), animate=False)
+            return True
+        except Exception:
+            return False
 
-        chooser = FileChooserListView(path=start if os.path.isdir(start) else os.path.expanduser("~"),
-                                      filters=IMAGE_FILTERS)
-        chooser.bind(on_submit=lambda _c, sel, *_: picked(sel))
-        box = BoxLayout(orientation="vertical", spacing=u(8), padding=u(8))
-        box.add_widget(chooser)
-        row = BoxLayout(orientation="horizontal", size_hint_y=None, height=u(ROW_H),
-                        spacing=u(8))
-        row.add_widget(Widget())
-        row.add_widget(_button("确定", self.ctx, lambda: picked(chooser.selection), 70))
-        row.add_widget(_button("取消", self.ctx, popup.dismiss, 70))
-        box.add_widget(row)
-        popup.content = box
-        popup.open()
+    def _pick_gallery(self) -> None:
+        """直接走系统相册（Android）；桌面端退化为打开选择器。"""
+        if not tt_bgpick.IS_ANDROID:
+            self._choose_bg()
+            return
+        if not tt_bgpick.pick_from_gallery(self._gallery_picked):
+            self._choose_bg()
+
+    def _gallery_picked(self, path: str, error: str) -> None:
+        """相册回调（可能在非 UI 线程），切回主线程再更新界面。"""
+        def apply(*_):
+            if error or not path:
+                return
+            self._apply_picked_bg(path)
+
+        Clock.schedule_once(apply, 0)
+
+    def _apply_picked_bg(self, path: str) -> None:
+        self._bg_path = str(path or "")
+        self.bg_label.text = self._bg_path or "（未设置，使用默认浅灰底）"
+        self.app.apply_bg_image(self._bg_path)      # 选完立即预览，不必先保存
 
     def _clear_bg(self) -> None:
         self._bg_path = ""
-        self.bg_label.text = "（未设置，使用深色外观）"
+        self.bg_label.text = "（未设置，使用默认浅灰底）"
+        self.app.apply_bg_image("")
+
+    def _preview_scale(self, value: float) -> None:
+        self.app.apply_bg_scale(int(value))
+
+    def _preview_alpha(self, value: float) -> None:
+        self.app.apply_bg_alpha(int(value))
 
     def _preview_veil(self, value: float) -> None:
         self.app.apply_veil(int(value))
@@ -318,6 +357,8 @@ class SettingsOverlay(FloatLayout):
         cfg["bg_image"] = self._bg_path
         cfg["bg_veil"] = int(self.veil.value)
         cfg["bg_blur"] = int(self.blur.value)
+        cfg["bg_scale"] = int(self.bg_scale.value)
+        cfg["bg_alpha"] = int(self.bg_alpha.value)
         self.on_save_cb(cfg)
 
 

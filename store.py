@@ -102,6 +102,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "bg_image": "",                 # 自定义背景图片的绝对路径（空 = 使用默认深色外观）
     "bg_veil": 60,                  # 背景蒙版强度 0~100：越大越暗，课程文字越清晰
     "bg_blur": 8,                   # 背景模糊半径 0~30（像素）：越大照片越"退后"
+    "bg_scale": 100,                # 背景图缩放 50~200（%）：100 = 等比铺满屏幕，不变形
+    "bg_alpha": 100,                # 背景图不透明度 0~100（%）：越小越透，露出底色
     "font_family": "",              # 界面字体族（空 = 内置默认 Microsoft YaHei UI）
     "font_scale": 1.0,              # 字号缩放 0.8~1.6（1.0 = 内置默认字号）
     "font_color": "",               # 文字颜色（空 = 跟随主题配色；非空则覆盖正文/次要/暗淡文字）
@@ -179,6 +181,11 @@ def load_config() -> Dict[str, Any]:
     color = str(cfg.get("font_color") or "").strip()
     cfg["font_color"] = color if _is_hex_color(color) else ""
     cfg["minimize_to_tray"] = bool(cfg.get("minimize_to_tray", True))
+    cfg["bg_image"] = str(cfg.get("bg_image") or "").strip()
+    cfg["bg_veil"] = _clamp_int(cfg.get("bg_veil"), 0, 100, 60)
+    cfg["bg_blur"] = _clamp_int(cfg.get("bg_blur"), 0, 30, 8)
+    cfg["bg_scale"] = _clamp_int(cfg.get("bg_scale"), 50, 200, 100)      # 背景图缩放（%）
+    cfg["bg_alpha"] = _clamp_int(cfg.get("bg_alpha"), 0, 100, 100)       # 背景图不透明度（%）
     picks = cfg.get("cell_picks")
     if isinstance(picks, dict):
         cfg["cell_picks"] = {str(k): str(v).strip() for k, v in picks.items()
@@ -186,6 +193,14 @@ def load_config() -> Dict[str, Any]:
     else:
         cfg["cell_picks"] = {}
     return cfg
+
+
+def _clamp_int(value: Any, low: int, high: int, default: int) -> int:
+    """把配置里的数值收敛到 [low, high]；非法值回落 default（配置文件被手改坏时兜底）。"""
+    try:
+        return max(int(low), min(int(high), int(round(float(value)))))
+    except (TypeError, ValueError):
+        return int(default)
 
 
 def _is_hex_color(text: str) -> bool:

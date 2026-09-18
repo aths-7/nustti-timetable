@@ -83,6 +83,8 @@ from kivy.uix.popup import Popup
 from kivy.uix.widget import Widget
 
 import store
+import tt_bg
+import tt_bgpick
 import tt_model
 import tt_theme
 from tt_bg import BASE_BG, BackgroundLayer
@@ -168,6 +170,8 @@ class TimetableApp(App):
         self._sc_dir = ""
         self._sc_report: Dict[str, Any] = {}
         self._sc_done = True
+        self._sc_bg_test_image = ""             # 自检里当"被选中的背景图"用的临时图片
+        self._sc_bg_before = None               # 自检前主人原本的背景图（收尾还原）
         self.density = 0.0
 
     # ------------------------------------------------------------------ #
@@ -200,7 +204,9 @@ class TimetableApp(App):
         root = FloatLayout()
         self.bg = BackgroundLayer(bg_image=str(self.cfg.get("bg_image") or ""),
                                   veil=int(self.cfg.get("bg_veil", 60) or 0),
-                                  blur=int(self.cfg.get("bg_blur", 8) or 0))
+                                  blur=int(self.cfg.get("bg_blur", 8) or 0),
+                                  scale=int(self.cfg.get("bg_scale", 100) or 100),
+                                  alpha=int(self.cfg.get("bg_alpha", 100) or 100))
         root.add_widget(self.bg)
         self.content = BoxLayout(orientation="vertical")
         root.add_widget(self.content)
@@ -395,6 +401,16 @@ class TimetableApp(App):
         if self.bg is not None:
             self.bg.set_image(path or "")
 
+    def apply_bg_scale(self, value: int) -> None:
+        self.cfg["bg_scale"] = int(value)
+        if self.bg is not None:
+            self.bg.set_scale(value)
+
+    def apply_bg_alpha(self, value: int) -> None:
+        self.cfg["bg_alpha"] = int(value)
+        if self.bg is not None:
+            self.bg.set_alpha(value)
+
     def save_cfg(self, cfg: Dict[str, Any]) -> None:
         merged = dict(self.cfg)
         merged.update(cfg)
@@ -405,6 +421,8 @@ class TimetableApp(App):
                 self.bg.set_image(str(self.cfg.get("bg_image") or ""))
             self.bg.set_veil(int(self.cfg.get("bg_veil", 60) or 0))
             self.bg.set_blur(int(self.cfg.get("bg_blur", 8) or 0))
+            self.bg.set_scale(int(self.cfg.get("bg_scale", 100) or 100))
+            self.bg.set_alpha(int(self.cfg.get("bg_alpha", 100) or 100))
         tt_theme.apply_font(str(self.cfg.get("font_family") or ""))
         self.rebuild()
         self.close_settings()
@@ -467,6 +485,8 @@ class TimetableApp(App):
             "bg_image": panel._bg_path,
             "bg_veil": int(panel.veil.value),
             "bg_blur": int(panel.blur.value),
+            "bg_scale": int(panel.bg_scale.value),
+            "bg_alpha": int(panel.bg_alpha.value),
         }
 
     def _captcha_provider(self, image_bytes: bytes) -> str:
@@ -549,8 +569,16 @@ class TimetableApp(App):
             ("settings", self.open_settings),
             # 设置页滚到底部再截一张：1080+ 高分屏最容易在页脚附近堆叠重叠
             ("settings_bottom", self._sc_scroll_settings),
+            # 背景选择器：修复前这里是"弹窗里一片空白、选不到图"（FileChooserListView 在
+            # 手机端列不出文件），现在换成自研选择器，本步直接打开并截图，列表有没有图、
+            # 能不能选中、选中后背景层是否真的换图，全由 _sc_bg_picker_check() 给 bool 判据。
+            ("bg_picker", self._sc_open_bg_picker),
+            # 缩放 / 透明度调到极端再各截一张，肉眼可见背景图"放大 + 变透"
+            ("bg_zoom", self._sc_bg_zoom),
+            # 设置页滚到「自定义背景」一节：截下"从相册选择 / 图片缩放 / 透明度"三件套
+            ("settings_bg", self._sc_settings_bg),
         ]
-        Clock.schedule_once(self._sc_run_step, 1.2)
+        Clock.schedule_once(self._sc_run_step, 2.4)
         Clock.schedule_once(self._sc_watchdog, 90)      # 兜底：任何一步卡死也能收尾
 
     def _sc_watchdog(self, _dt: float) -> None:
@@ -576,14 +604,14 @@ class TimetableApp(App):
         shot = os.path.join(self._sc_dir, f"{name}.png")
         entry: Dict[str, Any] = {"screenshot": shot, "mode": self.mode}
         # Kivy 的 Window.screenshot 走 SDL2 glReadPixels，偶发只在磁盘上留下 0 字节文件
-        # （提前返回、上下文未就绪等），此处最多重试 3 次，并把字节数写进报告，
+        # （提前返回、上下文未就绪等），此处最多重试 4 次，并把字节数写进报告，
         # 避免"文件存在但内容为空"被当成截图成功。
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 real = Window.screenshot(name=os.path.join(self._sc_dir, f"{name}.png")) or ""
                 if isinstance(real, str) and real:
                     shot = real                      # Kivy 会给缺省模板补 0001 等序号
-                time.sleep(0.3)
+                time.sleep(0.5)
             except Exception as exc:
                 self._sc_report.setdefault("errors", []).append(f"screenshot {name}: {exc}")
                 break
@@ -607,6 +635,12 @@ class TimetableApp(App):
                 entry["settings_spacing"] = self._settings_spacing_check()
             except Exception as exc:
                 entry["settings_spacing"] = {"ok": False, "error": str(exc)}
+        if name == "bg_picker":
+            # 在关掉弹窗之前把"列表是否列得出图 / 能否选中 / 缩放与透明度是否生效"都量下来
+            try:
+                entry["bg_picker_check"] = self._sc_bg_picker_check()
+            except Exception as exc:
+                entry["bg_picker_check"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         self._sc_report.setdefault("steps", []).append(entry)
         if name.startswith("cell_pick_dialog") and self._pick_dialog is not None:
             try:
@@ -614,6 +648,13 @@ class TimetableApp(App):
             except Exception as exc:
                 self._sc_report.setdefault("errors", []).append(f"close pick dialog: {exc}")
             self._pick_dialog = None
+        if name == "bg_picker":
+            dialog = getattr(self._settings, "bg_picker", None) if self._settings else None
+            if dialog is not None:
+                try:
+                    dialog.dismiss()
+                except Exception as exc:
+                    self._sc_report.setdefault("errors", []).append(f"close bg picker: {exc}")
         if name.startswith("settings"):
             try:
                 self.close_settings()
@@ -630,10 +671,17 @@ class TimetableApp(App):
         if self._sc_picks_backup is not None:
             self.cfg["cell_picks"] = dict(self._sc_picks_backup)
             self._sc_picks_backup = None
+        # 自检期间为了截图把背景换成了测试图，这里还原主人原本的背景（只在内存里改，
+        # 自检从不调用 save_cfg，所以主人的 config.json 不会被写脏）
+        if self._sc_bg_before is not None:
+            self.apply_bg_image(self._sc_bg_before)
+            self._sc_bg_before = None
         self._sc_checks.setdefault("cell_pick", self._cell_pick_check())
         for step in self._sc_report.get("steps", []):
             if step.get("settings_spacing"):
                 self._sc_checks["settings_spacing"] = step["settings_spacing"]
+            if step.get("bg_picker_check"):
+                self._sc_checks["bg_picker"] = step["bg_picker_check"]
         layout = self._describe_layout()
         report = {
             "app": "NUSTTI_Timetable_Kivy",
@@ -668,6 +716,7 @@ class TimetableApp(App):
                       for c in cards)
         cell = self._sc_checks.get("cell_pick") or {}
         spacing = self._sc_checks.get("settings_spacing") or {}
+        bg = self._sc_checks.get("bg_picker") or {}
         report["assertions"] = {
             "views_rendered": len(report["steps"]) == len(self._sc_steps),
             "screenshots_saved": all(s.get("bytes", 0) > 0 for s in report["steps"]),
@@ -691,7 +740,27 @@ class TimetableApp(App):
             "card_time_ok": bool(time_ok),
             # ③ 1080+ 分辨率下设置页/我的页各项行高与行距足够，不会堆叠重叠
             "settings_spacing_ok": bool(spacing.get("ok")),
+            # ---- 本轮"自定义背景"修复 + 扩展的回归判据 ----
+            # ④ 背景选择器：弹窗开得起来、列表真的列得出图片（原来是空白列表）
+            "bg_picker_opened_ok": bool(bg.get("popup_open")),
+            "bg_picker_listed_ok": bool(bg.get("listed_ok")),
+            "bg_picker_rows_ok": bool(int(bg.get("images") or 0) >= 1 and int(bg.get("rows") or 0) >= 1),
+            "bg_picker_hint_ok": bool(bg.get("hint_ok")),
+            # ⑤ 选中一行 + 「确定」后，设置页与底层背景都要真的换到这张图
+            "bg_picker_select_ok": bool(bg.get("select_ok")),
+            "bg_picker_apply_ok": bool(bg.get("pick_ok") and bg.get("apply_ok")),
+            # ⑥ 缩放 / 透明度滑块必须真的改变绘制结果（50% 缩一半、200% 放大一倍；0% 全透）
+            "bg_zoom_ok": bool(bg.get("zoom_ok")),
+            "bg_alpha_ok": bool(bg.get("alpha_ok")),
         }
+        report["assertions"]["all_bg_ok"] = bool(
+            report["assertions"]["bg_picker_opened_ok"]
+            and report["assertions"]["bg_picker_listed_ok"]
+            and report["assertions"]["bg_picker_rows_ok"]
+            and report["assertions"]["bg_picker_select_ok"]
+            and report["assertions"]["bg_picker_apply_ok"]
+            and report["assertions"]["bg_zoom_ok"]
+            and report["assertions"]["bg_alpha_ok"])
         report["assertions"]["all_layout_ok"] = bool(
             report["assertions"]["layout_ratios_ok"] and report["assertions"]["grid_columns_ok"]
             and report["assertions"]["metrics_ok"])
@@ -702,6 +771,10 @@ class TimetableApp(App):
             and report["assertions"]["card_room_ok"]
             and report["assertions"]["card_time_ok"]
             and report["assertions"]["settings_spacing_ok"])
+        # 一票总判：界面布局 + 历史三处修复 + 本轮「自定义背景」全部达标
+        report["assertions"]["all_ok"] = bool(report["assertions"]["all_layout_ok"]
+                                              and report["assertions"]["all_fixes_ok"]
+                                              and report["assertions"]["all_bg_ok"])
         path = os.path.join(self._sc_dir, "selfcheck_report.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(report, fh, ensure_ascii=False, indent=2)
@@ -795,6 +868,149 @@ class TimetableApp(App):
         scroll = getattr(panel, "scroll", None)
         if scroll is not None:
             scroll.scroll_y = 0.0
+
+    # ------------------------------------------------------------------ #
+    # 自检：自定义背景（选择器 / 缩放 / 透明度）
+    # ------------------------------------------------------------------ #
+    def _sc_make_bg_image(self) -> str:
+        """造一张自检用的背景图（放在自检目录的 bgtest 子目录里，不碰主人的任何文件）。
+
+        选择器按"当前已选图片所在目录"扫描，把测试图放进 bgtest 子目录后，
+        打开选择器时它必然出现在候选目录里 —— 列表能不能列出来就成了硬判据。
+        单独开一个子目录是为了不让截图目录里成百上千张 png 混进候选列表。
+        """
+        folder = os.path.join(self._sc_dir, "bgtest")
+        target = os.path.join(folder, "bg_pick_test.png")
+        try:
+            os.makedirs(folder, exist_ok=True)
+            from PIL import Image, ImageDraw
+            img = Image.new("RGB", (900, 1600), (32, 96, 168))
+            draw = ImageDraw.Draw(img)
+            for i in range(0, 1600, 100):           # 画点条纹，缩放/透明度变化肉眼可辨
+                draw.rectangle([0, i, 900, i + 50], fill=(240, 244, 250))
+            img.save(target)
+            return target if os.path.isfile(target) else ""
+        except Exception as exc:                    # pragma: no cover
+            Logger.warning(f"main: 自检背景图生成失败（{exc}）")
+        # 退路：主人配置里已有的背景图（如果存在）
+        current = str(self.cfg.get("bg_image") or "")
+        if current and os.path.isfile(current):
+            return current
+        return ""
+
+    def _sc_open_bg_picker(self) -> None:
+        """自检用：打开设置页的「选择背景图」弹窗（原 bug 现场：列表空白、选不到图）。"""
+        self._sc_bg_before = str(self.cfg.get("bg_image") or "")
+        self._sc_bg_test_image = self._sc_make_bg_image()
+        extra = [os.path.dirname(self._sc_bg_test_image)] if self._sc_bg_test_image else None
+        self.open_settings()
+        panel = self._settings
+        if panel is None:
+            return
+        panel._choose_bg(extra_dirs=extra)
+
+    def _sc_bg_picker_check(self) -> Dict[str, Any]:
+        """背景选择器 + 缩放 + 透明度的回归判据（全部给 bool，不靠肉眼）。"""
+        panel = self._settings
+        dialog = getattr(panel, "bg_picker", None) if panel is not None else None
+        if dialog is None:
+            return {"ok": False, "error": "背景选择器没打开"}
+        target = str(self._sc_bg_test_image or "")
+        state = dialog.described()
+        paths = [os.path.abspath(str(p)) for p in (state.get("paths") or [])]
+        listed = bool(target) and os.path.abspath(target) in paths
+        images = int(state.get("images") or 0)
+        rows = int(state.get("rows") or 0)
+        hint = str(state.get("hint") or "").strip()
+
+        # ① 选中一行 + 点「确定」→ 设置页与底层背景都要真的换图
+        dialog._pick({"path": target})
+        select_ok = bool(target) and os.path.abspath(str(dialog.selected or "")) == os.path.abspath(target)
+        dialog._confirm()
+        pick_ok = bool(dialog.picked) and str(self.cfg.get("bg_image") or "") == target
+        bg_state = self.bg.described_state() if self.bg else {}
+        apply_ok = bool(bg_state.get("image_ok") and str(bg_state.get("bg_image") or "") == target)
+
+        # ② 缩放：50% / 100% / 200% 三档的绘制宽度必须近似成比例（真的在缩放，不是摆设）
+        sizes: Dict[str, float] = {}
+        layer: List[float] = []
+        texture: Any = None
+        if self.bg is not None:
+            for value in (100, tt_bg.SCALE_MIN, tt_bg.SCALE_MAX):
+                self.bg.set_scale(value)
+                state_i = self.bg.described_state()
+                size = state_i.get("photo_size") or [0, 0]
+                sizes[str(value)] = round(float(size[0] or 0), 1)
+                layer = state_i.get("layer_size") or layer
+                texture = state_i.get("texture") or texture
+        base_w = sizes.get("100") or 0.0
+        zoom_ok = bool(base_w > 0
+                       and sizes.get(str(tt_bg.SCALE_MIN), 0.0) < base_w * 0.65
+                       and sizes.get(str(tt_bg.SCALE_MAX), 0.0) > base_w * 1.5)
+
+        # ③ 透明度：100% / 40% / 0% 的颜色通道 alpha 必须落到位
+        alphas: Dict[str, Any] = {}
+        if self.bg is not None:
+            for value in (100, 40, tt_bg.ALPHA_MIN):
+                self.bg.set_alpha(value)
+                alphas[str(value)] = self.bg.described_state().get("photo_alpha")
+        try:
+            alpha_ok = bool(float(alphas.get("100")) == 1.0
+                            and float(alphas.get(str(tt_bg.ALPHA_MIN))) == 0.0
+                            and 0.3 <= float(alphas.get("40")) <= 0.5)
+        except Exception:
+            alpha_ok = False
+
+        # 收尾：缩放/透明度还原成配置里的值（背景图先留着，后面两步截图要展示效果，
+        # 真正还原主人原背景图放在 _sc_finish 里做，避免自检改动被持久化）
+        if self.bg is not None:
+            self.bg.set_scale(int(self.cfg.get("bg_scale", 100) or 100))
+            self.bg.set_alpha(int(self.cfg.get("bg_alpha", 100) or 100))
+        kept_image = str(self.cfg.get("bg_image") or "") == target
+
+        return {"ok": bool(listed and rows >= 1 and images >= 1 and pick_ok and apply_ok
+                           and zoom_ok and alpha_ok),
+                "popup_open": bool(state.get("popup_open")),
+                "listed_ok": listed, "test_image": target,
+                "images": images, "rows": rows, "thumbs": int(state.get("thumbs") or 0),
+                "dirs": int(state.get("dirs") or 0),
+                "paths_head": [os.path.basename(p) for p in paths[:6]],
+                "candidates": state.get("candidates") or [],
+                "hint": hint, "hint_ok": bool(hint),
+                "gallery_button": bool(state.get("gallery_button")),
+                "select_ok": select_ok, "pick_ok": pick_ok, "apply_ok": apply_ok,
+                "zoom_ok": zoom_ok, "photo_sizes": sizes,
+                "layer_size": layer, "texture": texture,
+                "alpha_ok": alpha_ok, "photo_alphas": alphas,
+                "kept_test_image": kept_image}
+
+    def _sc_bg_zoom(self) -> None:
+        """自检用：把背景放大到上限、调透到 45% 再截一张（肉眼可见变化）。"""
+        if self._settings is not None:
+            try:
+                self.close_settings()
+            except Exception:
+                pass
+        self.set_view("week")
+        if self.bg is not None and self.bg.image_ok:
+            self.bg.set_veil(12)                     # 蒙版调淡，让缩放/透明度变化看得出来
+            self.bg.set_scale(tt_bg.SCALE_MAX)
+            self.bg.set_alpha(45)
+
+    def _sc_settings_bg(self) -> None:
+        """自检用：设置页滚到「自定义背景」一节（截下相册入口 + 缩放/透明度滑块）。"""
+        if self.bg is not None:                      # 先把上一步的极端值还原回配置口径
+            self.bg.set_veil(int(self.cfg.get("bg_veil", 60) or 0))
+            self.bg.set_scale(int(self.cfg.get("bg_scale", 100) or 100))
+            self.bg.set_alpha(int(self.cfg.get("bg_alpha", 100) or 100))
+        self.open_settings()
+        panel = self._settings
+        if panel is None:
+            return
+        try:
+            panel.scroll_to_bg()
+        except Exception as exc:
+            self._sc_report.setdefault("errors", []).append(f"scroll to bg: {exc}")
 
     def _settings_spacing_check(self) -> Dict[str, Any]:
         """设置页 / 我的页行高与行距是否拉开（1080+ 高分屏堆叠重叠的回归判据）。"""
