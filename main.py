@@ -2,9 +2,12 @@
 """南泰课表 · Kivy 版（Android + Windows 桌面双端）
 
 与桌面版（tkinter + PyInstaller 的单文件 exe）功能对齐：
-    * 三种视图：整周课表 / 今日 / 本周紧凑，标题栏按钮循环切换
-    * 自定义背景图：铺满窗口 + 蒙版（变暗）+ 模糊（照片退后），可清除
+    * 界面：蓝色渐变顶栏（周次 + 日期区间 + 前/后翻周）+ 7 列课表网格 + 底部 Tab 栏
+    * 三种视图：整周课表 / 今日 / 本周紧凑，底部 Tab 切换（「我的」= 设置面板）
+    * 自定义背景图：铺满窗口 + 蒙版（浅色外观下是白纱）+ 模糊（照片退后），可清除
     * 字体可调：字体族（本机字体文件解析）/ 0.8~1.6 倍字号 / 字体颜色（预设 + 自定义）
+    * 尺寸自适应：全部尺寸走 u()（按屏宽等比缩放，设计稿宽 392），不再用 dp()，
+      保证任何像素密度的手机上各区域占比一致（修复"手机端比例异常"）
     * 本地配置：Windows 用 %APPDATA%\\NUSTTI-Timetable（与桌面版共用同一份），
                 Android 用应用私有目录，同一套字段名
     * 在线同步：复用桌面版 jwgl_client / kb_parser 数据层，验证码弹窗输入
@@ -82,12 +85,12 @@ from kivy.uix.widget import Widget
 import store
 import tt_model
 import tt_theme
-from tt_bg import BackgroundLayer
+from tt_bg import BASE_BG, BackgroundLayer
 from tt_settings import CaptchaDialog, SettingsOverlay
 from tt_theme import THEME, rgba
-from tt_views import Ctx, HeaderBar, TodayView, WeekView, _label
+from tt_views import Ctx, Panel, TabBar, TodayView, TopBar, WeekView, _label
 
-DEFAULT_VERSION = "1.0.0-kivy"
+DEFAULT_VERSION = "1.0.1-kivy"
 SELFCHECK = False
 
 # 桌面预览窗口（手机比例），保证 Windows 上实跑与 Android 观感一致
@@ -141,9 +144,14 @@ class TimetableApp(App):
         self.ctx: Optional[Ctx] = None
         self.bg: Optional[BackgroundLayer] = None
         self.content: Optional[BoxLayout] = None
-        self.header: Optional[HeaderBar] = None
+        self.topbar: Optional[TopBar] = None
+        self.panel: Optional[Panel] = None
+        self.tabbar: Optional[TabBar] = None
         self.view_widget: Optional[Widget] = None
         self.mode = "week"
+        self.display_week = 0          # 顶栏上正在查看的周（可前/后翻，默认当前周）
+        self._ui_width = 0.0           # 当前界面尺寸基准（窗口宽度），用于识别尺寸变化
+        self._resize_guard = False
         self._settings: Optional[SettingsOverlay] = None
         self._sc_steps: List[Any] = []
         self._sc_index = 0
@@ -170,12 +178,14 @@ class TimetableApp(App):
         self.mode = self.start_view or str(self.cfg.get("view_mode") or "week")
         if self.mode not in ("week", "today", "week_compact"):
             self.mode = "week"
+        if not IS_ANDROID:
+            # 先定窗口尺寸再算界面尺寸：u() 按窗口宽度换算，顺序反了会用到旧的宽度
+            Window.size = DESKTOP_WINDOW
+        Window.clearcolor = rgba(BASE_BG, 1)
+        self.density = calibrate_metrics()
         tt_theme.apply_font(str(self.cfg.get("font_family") or ""))
         self.ctx = Ctx(self.cfg, self.courses, self.version)
-        if not IS_ANDROID:
-            Window.size = DESKTOP_WINDOW
-        Window.clearcolor = rgba("#0f1320", 1)
-        self.density = calibrate_metrics()
+        self.display_week = int(self.ctx.week or 1)
 
         root = FloatLayout()
         self.bg = BackgroundLayer(bg_image=str(self.cfg.get("bg_image") or ""),
@@ -185,7 +195,38 @@ class TimetableApp(App):
         self.content = BoxLayout(orientation="vertical")
         root.add_widget(self.content)
         self.rebuild()
+        self.watch_window_size()
         return root
+
+    # ------------------------------------------------------------------ #
+    # 尺寸基准：u() 按窗口宽度换算，窗口尺寸变化后必须重建，否则各区域占比失衡
+    # ------------------------------------------------------------------ #
+    def watch_window_size(self) -> None:
+        Window.bind(size=self._on_window_size)
+        # 首帧时 SDL 窗口尺寸往往还没生效（仍是默认 800x600），延迟再校验一次
+        Clock.schedule_once(lambda *_: self._on_window_size(), 0.35)
+
+    def _on_window_size(self, *_args) -> None:
+        if self.content is None:
+            return
+        width = float(Window.width or 0)
+        if width <= 1:
+            return
+        base = float(self._ui_width or 0)
+        if base > 1 and abs(width - base) / base < 0.05:
+            return
+        self._ui_width = width
+        if self._resize_guard:
+            return
+        self._resize_guard = True
+        Clock.schedule_once(self._rebuild_after_resize, 0)
+
+    def _rebuild_after_resize(self, _dt: float) -> None:
+        self._resize_guard = False
+        try:
+            self.rebuild()
+        except Exception as exc:                              # pragma: no cover
+            Logger.warning(f"main: 尺寸变化后重建失败 {exc}")
 
     def on_stop(self) -> None:
         try:                                     # 记住窗口尺寸（桌面端）
@@ -202,44 +243,80 @@ class TimetableApp(App):
         return Ctx(self.cfg, self.courses, self.version)
 
     def rebuild(self) -> None:
-        """按当前配置整体重建界面（字体族/字号/颜色变更后立即生效）。"""
+        """按当前配置整体重建界面（字体族/字号/颜色/换周后立即生效）。
+
+        整屏结构（对应参考截图）：
+            TopBar（蓝渐变：品牌 + 周次 + 日期区间 + 同步/设置）
+            Panel （白色圆角面板内嵌当前视图）
+            TabBar（底部 Tab：今日 / 课表 / 紧凑 / 我的）
+        """
         self.ctx = self.make_ctx()
+        if not self.display_week:
+            self.display_week = int(self.ctx.week or 1)
         if self.content is None:
             return
         self.content.clear_widgets()
-        self.header = HeaderBar(self.ctx, {
-            "switch_view": self.cycle_view,
-            "sync": self.open_sync,
-            "settings": self.open_settings,
-            "quit": self.quit_app,
-        })
-        self.content.add_widget(self.header)
-        self.header.mark_active(self.mode)
+        self.topbar = TopBar(self.ctx, self._nav_callbacks(), self.display_week)
+        self.content.add_widget(self.topbar)
+
+        self.panel = Panel(color=THEME["panel"], alpha=self.ctx.panel_alpha(), radius=18,
+                           orientation="vertical")
         self.view_widget = self._build_view(self.mode)
-        self.content.add_widget(self.view_widget)
-        if self.bg is not None:
-            self.header.size_hint_y = None          # 保证标题栏高度固定
+        self.panel.add_widget(self.view_widget)
+        self.content.add_widget(self.panel)
+
+        self.tabbar = TabBar(self.ctx, self.mode, self.select_tab)
+        self.content.add_widget(self.tabbar)
+
+    def _nav_callbacks(self) -> Dict[str, Any]:
+        return {"prev_week": lambda: self.step_week(-1),
+                "next_week": lambda: self.step_week(1),
+                "this_week": self.goto_this_week,
+                "sync": self.open_sync,
+                "settings": self.open_settings}
 
     def _build_view(self, mode: str) -> Widget:
         if mode == "today":
             return TodayView(self.ctx)
         if mode == "week_compact":
-            return WeekView(self.ctx, compact=True)
-        return WeekView(self.ctx, compact=False)
+            return WeekView(self.ctx, compact=True, week=self.display_week)
+        return WeekView(self.ctx, compact=False, week=self.display_week)
 
     def set_view(self, mode: str) -> None:
         if mode not in ("week", "today", "week_compact"):
             return
         self.mode = mode
         self.cfg["view_mode"] = mode
-        if self.content is None:
+        if self.panel is None:
             return
         if self.view_widget is not None:
-            self.content.remove_widget(self.view_widget)
+            self.panel.remove_widget(self.view_widget)
         self.view_widget = self._build_view(mode)
-        self.content.add_widget(self.view_widget)
-        if self.header is not None:
-            self.header.mark_active(mode)
+        self.panel.add_widget(self.view_widget)
+        if self.tabbar is not None:
+            self.tabbar.set_active(mode)
+
+    def step_week(self, delta: int) -> None:
+        """顶栏左右箭头：前/后翻周（1 ~ 总周数）。"""
+        total = tt_model.total_weeks(self.cfg)
+        week = max(1, min(total, int(self.display_week or 1) + int(delta)))
+        if week != self.display_week:
+            self.refresh_week(week)
+
+    def goto_this_week(self) -> None:
+        if self.display_week != self.ctx.week:
+            self.refresh_week(self.ctx.week)
+
+    def refresh_week(self, week: int) -> None:
+        self.display_week = int(week)
+        self.rebuild()
+
+    def select_tab(self, key: str) -> None:
+        """底部 Tab：今日 / 课表 / 紧凑 / 我的（我的 = 打开设置面板）。"""
+        if key == "mine":
+            self.open_settings()
+            return
+        self.set_view(key)
 
     def cycle_view(self) -> None:
         order = ["week", "today", "week_compact"]
@@ -477,6 +554,7 @@ class TimetableApp(App):
         if self._sc_done:
             return
         self._sc_done = True
+        layout = self._describe_layout()
         report = {
             "app": "NUSTTI_Timetable_Kivy",
             "version": self.version,
@@ -489,10 +567,14 @@ class TimetableApp(App):
             "courses": len(self.courses),
             "demo": bool(self.demo),
             "week": tt_model.current_week(self.cfg),
+            "display_week": self.display_week,
             "term": self.cfg.get("term", ""),
             "font": tt_theme.font_info(),
             "scale": float(self.cfg.get("font_scale", 1.0) or 1.0),
             "ink": str(self.cfg.get("font_color") or ""),
+            "ink_effective": self.ctx.ink if self.ctx else "",
+            "ink_ignored": bool(self.ctx.ink_ignored) if self.ctx else False,
+            "layout": layout,
             "background": self.bg.described_state() if self.bg else {},
             "steps": self._sc_report.get("steps", []),
             "errors": self._sc_report.get("errors", []),
@@ -507,19 +589,61 @@ class TimetableApp(App):
             # 只认"真的注册了字体文件"：内置 Roboto 不含中日韩字形，文本会变空心方块
             "font_applied": report["font"].get("font_name") == "ttfont",
             "no_errors": not report["errors"],
+            # 比例自检：顶栏/底栏/表头/网格列宽占屏比必须落在设计稿口径内，
+            # 防止再次出现"手机端显示比例异常"（dp 随像素密度变化导致的失衡）。
+            "layout_ratios_ok": bool(layout.get("ratios_ok")),
+            "grid_columns_ok": bool(layout.get("columns_ok")),
         }
+        report["assertions"]["all_layout_ok"] = bool(
+            report["assertions"]["layout_ratios_ok"] and report["assertions"]["grid_columns_ok"]
+            and report["assertions"]["metrics_ok"])
         path = os.path.join(self._sc_dir, "selfcheck_report.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(report, fh, ensure_ascii=False, indent=2)
         print("[SELFCHECK] " + json.dumps({"report": path,
                                            "assertions": report["assertions"],
                                            "courses": report["courses"],
-                                           "font": report["font"]},
+                                           "font": report["font"],
+                                           "layout": layout},
                                           ensure_ascii=False), flush=True)
         try:
             self.stop()
         except Exception as exc:      # 关窗时 SDL2/ctypes 噪声，不影响已落盘产物
             print(f"[SELFCHECK] 退出噪声：{type(exc).__name__}: {exc}", flush=True)
+
+    def _describe_layout(self) -> Dict[str, Any]:
+        """各区域高度/宽度占屏比（比例异常的客观判据）。"""
+        h = max(1.0, float(Window.height or 0))
+        w = max(1.0, float(Window.width or 0))
+        top_h = float(self.topbar.height) if self.topbar else 0.0
+        tab_h = float(self.tabbar.height) if self.tabbar else 0.0
+        panel_h = float(self.panel.height) if self.panel else 0.0
+        view = self.view_widget
+        head_h = float(getattr(view, "header", None).height) if hasattr(view, "header") else 0.0
+        metrics = {}
+        # 注意：自检结束时 view_widget 停在最后一步（紧凑视图），整周网格口径要从
+        # 已归档的 step 记录里取，避免把"紧凑视图无节次轴"误当成整周视图的列宽。
+        for step in self._sc_report.get("steps", []):
+            if step.get("compact") is False and step.get("metrics"):
+                metrics = step["metrics"]
+                break
+        return {
+            "unit": round(tt_theme.unit_scale(), 4),
+            "design_w": tt_theme.DESIGN_W,
+            "window": [int(w), int(h)],
+            "density": getattr(self, "density", None),
+            "topbar_h": round(top_h, 1), "topbar_frac": round(top_h / h, 4),
+            "panel_frac": round(panel_h / h, 4),
+            "tabbar_h": round(tab_h, 1), "tabbar_frac": round(tab_h / h, 4),
+            "weekdays_header_h": round(head_h, 1),
+            "weekdays_header_frac": round(head_h / h, 4),
+            "grid": metrics,
+            # 参考截图口径：顶栏约 8~16%、底栏约 4~9%、星期表头 ≤ 8%
+            "ratios_ok": bool(0.07 <= top_h / h <= 0.17 and 0.03 <= tab_h / h <= 0.10
+                              and head_h / h <= 0.08),
+            # 7 列网格：每列占屏宽应约 (1 - 节次轴占比)/7
+            "columns_ok": bool(metrics and 0.10 <= metrics.get("col_w_frac", 0) <= 0.15),
+        }
 
 
 # --------------------------------------------------------------------------- #

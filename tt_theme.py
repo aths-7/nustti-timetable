@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
-"""主题配色、字体族解析、通用小工具（Kivy 版）。
+"""主题配色、字体族解析、自适应度量（Kivy 版）。
 
-与桌面版（tkinter）保持一致的三件事：
-    * 配色     THEME / COURSE_COLORS 直接沿用桌面版色值，保证两端观感一致
-    * 字体族   桌面版用 tkinter 字体族名，Kivy 需要真实字体文件 → 这里做"族名 → 字体文件"解析
-    * 字号缩放 0.8 ~ 1.6 倍；字体颜色覆盖正文/次要/暗淡三档
+改版（v1.0.1，对齐参考截图）：
+    * 配色：浅灰页面底 + 白色面板 + 蓝色渐变顶栏（#0EA5E9 → #06B6D4）
+            + 6 色课程卡（黄/粉/绿/橙/蓝/紫，白字）
+    * 度量：新增 u() —— 按屏宽等比缩放（设计稿宽度 392 单位），替代 dp()
+      dp() 依赖设备上报的像素密度：同一份界面在不同手机上占屏比例能差近一倍，
+      这正是"手机端显示比例异常"的根因。u(1) = 屏宽 / 392 像素，
+      任何屏幕宽度下各区域占比都与设计稿一致，与设备密度彻底解耦。
+    * 字体族解析 / 字号缩放 / 颜色校验沿用改版前实现（族名 → 字体文件 → Kivy 字体名）。
 """
 
 from __future__ import annotations
@@ -16,71 +20,80 @@ from kivy.core.text import LabelBase
 from kivy.utils import platform
 
 # --------------------------------------------------------------------------- #
-# 配色（沿用桌面版 main.py 的 THEME / COURSE_COLORS）
+# 配色（浅色卡片风，对齐参考截图）
 # --------------------------------------------------------------------------- #
 THEME: Dict[str, str] = {
-    "panel": "#181b26",
-    "panel2": "#212636",
-    "panel3": "#2b3245",
-    "border": "#2c3348",
-    "text": "#e9edf7",
-    "sub": "#98a2bb",
-    "dim": "#6c7590",
-    "accent": "#4c8dff",
-    "today_bg": "#242c42",
-    "warn": "#ffb454",
-    "ok": "#48d597",
+    "bg": "#F1F5F9",            # 页面底（浅灰）
+    "panel": "#FFFFFF",         # 面板/卡片底
+    "panel2": "#F8FAFC",        # 次级面板（节次轴、今日列）
+    "panel3": "#EEF3F9",        # 输入框/按钮底
+    "border": "#E2E8F0",        # 描边
+    "line": "#EDF1F6",          # 网格线
+    "text": "#0F172A",          # 主文字（深墨）
+    "sub": "#64748B",           # 次要文字
+    "dim": "#94A3B8",           # 暗淡文字
+    "accent": "#0EA5E9",        # 主色（渐变起点 / 选中蓝）
+    "accent2": "#06B6D4",       # 主色（渐变终点）
+    "accent_soft": "#E0F2FE",   # 主色浅底
+    "today": "#EF4444",         # 今天（红）
+    "today_bg": "#F5FAFF",      # 今天所在列底色（沿用旧键名，兼容设置页）
+    "today_col": "#F5FAFF",     # 今天所在列底色
+    "on_accent": "#FFFFFF",     # 渐变底上的文字
+    "warn": "#F59E0B",
+    "ok": "#10B981",
 }
 
+# 课程色板（背景色, 文字色）：按课程名稳定分配，与今日视图共用同一套
 COURSE_COLORS: List[Tuple[str, str]] = [
-    ("#2f4a72", "#dce9ff"), ("#3f5f4a", "#dff5e4"), ("#5a3f6b", "#f0e2ff"),
-    ("#6b4a2f", "#ffe9d6"), ("#2f5f66", "#d9f5f8"), ("#6b2f45", "#ffe0ea"),
-    ("#4a4a2f", "#f5f0d6"), ("#334a80", "#e0e8ff"),
+    ("#F59E0B", "#FFFFFF"),      # 黄 —— 传感器类
+    ("#EC4899", "#FFFFFF"),      # 粉 —— 数字信号类
+    ("#10B981", "#FFFFFF"),      # 绿 —— 通信原理类
+    ("#F97316", "#FFFFFF"),      # 橙 —— FPGA 类
+    ("#3B82F6", "#FFFFFF"),      # 蓝 —— 概率统计类
+    ("#8B5CF6", "#FFFFFF"),      # 紫 —— 思政类
+    ("#0EA5E9", "#FFFFFF"),      # 青
+    ("#14B8A6", "#FFFFFF"),      # 蓝绿
 ]
 
 PRESET_FONT_COLORS: List[Tuple[str, str]] = [
-    ("默认主题色", ""), ("亮黄", "#ffe066"), ("纯白", "#ffffff"), ("淡青", "#9ff3ea"),
-    ("暖橙", "#ffb454"), ("浅粉", "#ffc2d1"), ("草绿", "#a8e6a1"), ("淡紫", "#d6bcfa"),
+    ("默认主题色", ""), ("深墨", "#0F172A"), ("墨蓝", "#1E3A8A"), ("藏青", "#164E63"),
+    ("深绿", "#166534"), ("深紫", "#5B21B6"), ("酒红", "#9F1239"), ("纯白", "#ffffff"),
 ]
 
 WEEKDAY_CN = ["一", "二", "三", "四", "五", "六", "日"]
 
 FONT_SCALE_MIN, FONT_SCALE_MAX = 0.8, 1.6
 
-# 字体族 → 候选字体文件（"族名" 既用于设置项展示，也用于 config.json 的 font_family）
-WINDOWS_FONTS_DIR = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
-ANDROID_FONTS_DIR = "/system/fonts"
+# --------------------------------------------------------------------------- #
+# 自适应度量：u() —— 设计稿宽 392 单位，按实际屏宽等比缩放
+# --------------------------------------------------------------------------- #
+DESIGN_W = 392.0
+_UNIT_CACHE: Dict[str, float] = {"w": -1.0, "k": 1.0}
 
-_FAMILY_FILES: Dict[str, List[str]] = {
-    "Microsoft YaHei UI": ["msyh.ttc", "msyhl.ttc", "msyh.ttf"],
-    "微软雅黑": ["msyh.ttc", "msyh.ttf"],
-    "SimHei": ["simhei.ttf"],
-    "黑体": ["simhei.ttf"],
-    "Microsoft JhengHei": ["msjh.ttc"],
-    "SimSun": ["simsun.ttc"],
-    "宋体": ["simsun.ttc"],
-    "KaiTi": ["simkai.ttf"],
-    "楷体": ["simkai.ttf"],
-    "FangSong": ["simfang.ttf"],
-    "DengXian": ["Deng.ttf", "dengxian.ttf"],
-    "等线": ["Deng.ttf"],
-    "Consolas": ["consola.ttf", "consolab.ttf"],
-    "Segoe UI": ["segoeui.ttf"],
-    "Arial": ["arial.ttf"],
-    "Tahoma": ["tahoma.ttf"],
-    "Verdana": ["verdana.ttf"],
-    "Times New Roman": ["times.ttf"],
-    # tkinter 里常见但本机未必有真实字库的族名 → 回落到 Kivy 内置 Roboto（无衬线）
-    "Modern": ["__kivy_roboro__"],
-}
 
-# Android 上按优先级寻找中文字库
-_ANDROID_FONT_GLOBS = [
-    "NotoSansCJK-Regular.ttc", "NotoSansCJKsc-Regular.otf", "NotoSansSC-Regular.otf",
-    "DroidSansFallback.ttf", "DroidSansFallbackFull.ttf", "NotoSansCJK.ttc",
-]
+def window_width() -> float:
+    """当前窗口宽度（Kivy 坐标单位 = 像素）。窗口尚未创建时返回设计稿宽度。"""
+    try:
+        from kivy.core.window import Window
+        width = float(getattr(Window, "width", 0) or 0)
+    except Exception:
+        width = 0.0
+    return width if width > 1 else DESIGN_W
 
-KIVY_FONT_ALIAS = "Roboto"
+
+def unit_scale() -> float:
+    """1 个设计单位对应多少像素（= 屏宽 / 392，带上下限保护）。"""
+    width = window_width()
+    if abs(width - _UNIT_CACHE["w"]) < 0.5:
+        return _UNIT_CACHE["k"]
+    scale = max(0.4, min(6.5, width / DESIGN_W))
+    _UNIT_CACHE.update({"w": width, "k": scale})
+    return scale
+
+
+def u(value: float) -> float:
+    """设计单位 → 像素（替代 dp()，与设备像素密度无关）。"""
+    return float(value) * unit_scale()
 
 
 def rgba(color: str, alpha: float = 1.0) -> List[float]:
@@ -100,6 +113,21 @@ def is_hex_color(text: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def lum(color: str) -> float:
+    """感知亮度 0~1（用于判断文字颜色在浅底上是否可读）。"""
+    r, g, b, _ = rgba(color)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def readable_on_light(color: str) -> bool:
+    """浅色外观下是否可读：颜色足够深才算可读。
+
+    历史上配置里存的文字颜色（如 #ffe066 亮黄）是给深色外观配的，
+    直接拿到浅色卡片上会看不清 —— 此时自动忽略该值，回落主题墨色。
+    """
+    return lum(color) < 0.62
 
 
 def mix(c1: str, c2: str, k: float) -> str:
@@ -122,6 +150,41 @@ def course_palette(index: int) -> Tuple[str, str]:
 # --------------------------------------------------------------------------- #
 # 字体族解析（族名 → 字体文件 → Kivy 字体名）
 # --------------------------------------------------------------------------- #
+WINDOWS_FONTS_DIR = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+ANDROID_FONTS_DIR = "/system/fonts"
+
+_FAMILY_FILES: Dict[str, List[str]] = {
+    "Microsoft YaHei UI": ["msyh.ttc", "msyhl.ttc", "msyh.ttf"],
+    "微软雅黑": ["msyh.ttc", "msyh.ttf"],
+    "SimHei": ["simhei.ttf"],
+    "黑体": ["simhei.ttf"],
+    "Microsoft JhengHei": ["msjh.ttc"],
+    "SimSun": ["simsun.ttc"],
+    "宋体": ["simsun.ttc"],
+    "KaiTi": ["simkai.ttf"],
+    "楷体": ["simkai.ttf"],
+    "FangSong": ["simfang.ttf"],
+    "DengXian": ["Deng.ttf", "dengxian.ttf"],
+    "等线": ["Deng.ttf"],
+    "Consolas": ["consola.ttf", "consolab.ttf"],
+    "Segoe UI": ["segoeui.ttf"],
+    "Arial": ["arial.ttf"],
+    "Tahoma": ["tahoma.ttf"],
+    "Verdana": ["verdana.ttf"],
+    "Times New Roman": ["times.ttf"],
+    # tkinter 里常见但本机未必有真实字库的族名 → 回落到本机默认可显示中文字体
+    "Modern": ["__kivy_roboro__"],
+}
+
+# Android 上按优先级寻找中文字库
+_ANDROID_FONT_GLOBS = [
+    "NotoSansCJK-Regular.ttc", "NotoSansCJKsc-Regular.otf", "NotoSansSC-Regular.otf",
+    "DroidSansFallback.ttf", "DroidSansFallbackFull.ttf", "NotoSansCJK.ttc",
+]
+
+KIVY_FONT_ALIAS = "Roboto"
+
+
 def _windows_font_path(files: List[str]) -> Optional[str]:
     for name in files:
         if name.startswith("__kivy"):

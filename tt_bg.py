@@ -23,7 +23,7 @@ from kivy.uix.widget import Widget
 
 from tt_theme import rgba
 
-BASE_BG = "#0f1320"
+BASE_BG = "#EEF2F7"         # 浅色外观：底色改为浅灰（原深色 #0f1320）
 MAX_BLUR = 12           # 模糊半径上限（像素）：与桌面版 0~30 的可视效果对齐但更省性能
 
 
@@ -136,12 +136,12 @@ class BackgroundLayer(FloatLayout):
 
     # ------------------------------------------------------------------ #
     def set_veil(self, veil: int) -> None:
-        """蒙版强度 0~100：越大越暗。"""
+        """蒙版强度 0~100：浅色外观下是"白纱"，越大背景越淡、越贴近白底。"""
         self.veil = max(0, min(100, int(veil or 0)))
         alpha = self.veil / 100.0 * 0.85
         if self._veil_rect is None:
             with self.canvas.after:
-                self._veil_color = Color(0, 0, 0, alpha)
+                self._veil_color = Color(1, 1, 1, alpha)
                 self._veil_rect = Rectangle(pos=self.pos, size=self.size)
         else:
             self._veil_color.a = alpha

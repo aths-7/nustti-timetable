@@ -13,7 +13,7 @@ source.include_exts = py,png,jpg,jpeg,webp,bmp,ttf,otf,ttc,json,md
 source.exclude_dirs = screenshots,screenshots_temp,__pycache__,build,dist,.buildozer,bin,temp
 
 # apk 版本号：与 VERSION 文件保持一致（改版本号时两处一起改）
-version = 1.0.0
+version = 1.0.1
 
 # 依赖：程序在手机上真正用到的四个库
 #   kivy     -> 界面

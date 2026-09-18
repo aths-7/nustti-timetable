@@ -192,3 +192,44 @@ def demo_courses() -> List[Dict[str, Any]]:
 
 def week_label(cfg: Dict[str, Any], week: int) -> str:
     return f"第 {week} 周 / 共 {total_weeks(cfg)} 周"
+
+
+def term_start_date(cfg: Dict[str, Any]) -> Optional[date]:
+    """学期第 1 周星期一（解析不出返回 None）。"""
+    raw = str(cfg.get("term_start") or "").strip()
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def week_monday(cfg: Dict[str, Any], week: int,
+                today: Optional[date] = None) -> Optional[date]:
+    """第 week 周的星期一；未配置学期首日时以"本周一"兜底，保证表头始终有日期。"""
+    start = term_start_date(cfg)
+    if start is None:
+        today = today or date.today()
+        return today - timedelta(days=today.isoweekday() - 1)
+    return start + timedelta(days=(max(1, int(week)) - 1) * 7)
+
+
+def week_dates(cfg: Dict[str, Any], week: int,
+               today: Optional[date] = None) -> List[Optional[date]]:
+    """第 week 周 7 天的日期（周一起）。"""
+    monday = week_monday(cfg, week, today)
+    if monday is None:
+        return [None] * 7
+    return [monday + timedelta(days=i) for i in range(7)]
+
+
+def week_range_text(cfg: Dict[str, Any], week: int, today: Optional[date] = None) -> str:
+    """顶栏副标题的日期区间，如 9月14-20日 / 8月31日-9月6日。"""
+    days = week_dates(cfg, week, today)
+    first, last = days[0], days[-1]
+    if not first or not last:
+        return ""
+    if first.month == last.month:
+        return f"{first.month}月{first.day}-{last.day}日"
+    return f"{first.month}月{first.day}日-{last.month}月{last.day}日"
