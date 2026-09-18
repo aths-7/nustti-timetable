@@ -1,0 +1,232 @@
+# Ensure build layout
+# Create directory /home/runner/.buildozer/cache
+# Create directory /home/runner/work/nustti-timetable/nustti-timetable/bin
+# Create directory /home/runner/.buildozer/android/platform/android/platform
+# Check configuration tokens
+# Preparing build
+# Check requirements for android
+# Search for Git (git)
+#  -> found at /usr/bin/git
+# Search for Cython (cython)
+#  -> found at /home/runner/.local/bin/cython
+# Search for Java compiler (javac)
+#  -> found at /usr/lib/jvm/java-17-openjdk-amd64/bin/javac
+# Search for Java keytool (keytool)
+#  -> found at /usr/lib/jvm/java-17-openjdk-amd64/bin/keytool
+# Install platform
+# Run 'git config --get remote.origin.url' ...
+# Cwd /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android
+https://github.com/kivy/python-for-android.git
+# Run 'git branch -vv' ...
+# Cwd /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android
+* master 58d21141 [origin/master] Merge pull request #3321 from kivy/release-2026.05.09
+# Run '/usr/bin/python3 -m pip install -q --user appdirs colorama>=0.3.3 jinja2 sh>=2, <3.0; sys_platform!="win32" meson ninja build toml packaging setuptools wheel~=0.43.0' ...
+# Cwd None
+# Android ANT is missing, downloading
+# Downloading https://archive.apache.org/dist/ant/binaries/apache-ant-1.9.4-bin.tar.gz
+# Extracting apache-ant-1.9.4-bin.tar.gz to /home/runner/.buildozer/android/platform/apache-ant-1.9.4
+# Apache ANT installation done.
+# Android SDK found at /home/runner/.buildozer/android/platform/android-sdk
+# Recommended android's NDK version by p4a is: 28c
+# Android NDK found at /home/runner/.buildozer/android/platform/android-ndk-r25b
+# Run '/usr/bin/python3 -m pythonforandroid.toolchain aab -h --color=always --storage-dir=/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a --ndk-api=24 --ignore-setup-py --debug' ...
+# Cwd /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android
+# Check application requirements
+# Compile platform
+# Run '/usr/bin/python3 -m pythonforandroid.toolchain create --dist_name=nustti_timetable --bootstrap=sdl2 --requirements=python3,kivy,pillow,requests==2.32.3,charset-normalizer==3.3.2,openpyxl --arch=arm64-v8a --copy-libs --color=always --storage-dir=/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a --ndk-api=24 --ignore-setup-py --debug' ...
+# Cwd /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+[1m[INFO][0m:    Recipe requests: version "2.32.3" requested
+[1m[INFO][0m:    Recipe charset-normalizer: version "3.3.2" requested
+[1m[INFO][0m:    Will compile for the following archs: arm64-v8a
+[1m[INFO][0m:    Found Android API target in $ANDROIDAPI: 34
+[1m[INFO][0m:    Available Android APIs are (34)
+[1m[INFO][0m:    Requested API target 34 is available, continuing.
+[1m[INFO][0m:    Found NDK dir in $ANDROIDNDK: /home/runner/.buildozer/android/platform/android-ndk-r25b
+[1m[INFO][0m:    Found NDK version 25b
+[1m[INFO][0m:    Getting NDK API version (i.e. minimum supported API) from user argument
+[1m[90m[DEBUG][39m[0m:   All possible dists: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching name and arch: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching ndk_api and recipe: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[INFO][0m:    Of the existing distributions, the following meet the given requirements:
+[1m[INFO][0m:    	[32m[1mnustti_timetable[0m: min API 24, includes recipes ([32mfreetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer[0m), built for archs ([34marm64-v8a[0m)
+[1m[INFO][0m:    [1m[94mnustti_timetable has compatible recipes, using this one[0m
+# Build the application #4
+# Copy application source from /home/runner/work/nustti-timetable/nustti-timetable
+# Remove directory and subdirectory /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app
+# Create directory /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/main.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/main.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_bgpick.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_bgpick.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_model.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_model.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_bg.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_bg.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_theme.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_theme.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_views.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_views.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_datepick.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_datepick.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/VERSION to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/VERSION
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/README.md to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/README.md
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/kb_parser.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/kb_parser.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/tt_settings.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_settings.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/store.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/store.py
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/jwgl_client.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/jwgl_client.py
+# Create directory /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/icon-144.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/icon-144.png
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/icon-48.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/icon-48.png
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/icon-96.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/icon-96.png
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/icon-192.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/icon-192.png
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/presplash.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/presplash.png
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/icon.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/icon.png
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/assets/icon-72.png to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/assets/icon-72.png
+# copy /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/applibs to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/_applibs
+# Copy /home/runner/.local/lib/python3.10/site-packages/buildozer/sitecustomize.py to /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/sitecustomize.py
+# Package the application
+# project.properties updated
+# Run '/usr/bin/python3 -m pythonforandroid.toolchain apk --bootstrap sdl2 --dist_name nustti_timetable --name 南泰课表 --version 1.0.2 --package cn.nustti.nustti_timetable --minsdk 24 --ndk-api 24 --private /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app --permission INTERNET --permission ACCESS_NETWORK_STATE --permission READ_MEDIA_IMAGES --permission READ_EXTERNAL_STORAGE --android-entrypoint org.kivy.android.PythonActivity --android-apptheme @android:style/Theme.NoTitleBar --presplash /home/runner/work/nustti-timetable/nustti-timetable/./assets/presplash.png --icon /home/runner/work/nustti-timetable/nustti-timetable/./assets/icon.png --orientation portrait --window --enable-androidx --copy-libs --arch arm64-v8a --color=always --storage-dir=/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a --ndk-api=24 --ignore-setup-py --debug' ...
+# Cwd /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+[1m[INFO][0m:    Will compile for the following archs: arm64-v8a
+[1m[INFO][0m:    Found Android API target in $ANDROIDAPI: 34
+[1m[INFO][0m:    Available Android APIs are (34)
+[1m[INFO][0m:    Requested API target 34 is available, continuing.
+[1m[INFO][0m:    Found NDK dir in $ANDROIDNDK: /home/runner/.buildozer/android/platform/android-ndk-r25b
+[1m[INFO][0m:    Found NDK version 25b
+[1m[INFO][0m:    Getting NDK API version (i.e. minimum supported API) from user argument
+[1m[90m[DEBUG][39m[0m:   All possible dists: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching name and arch: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching ndk_api and recipe: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[INFO][0m:    Of the existing distributions, the following meet the given requirements:
+[1m[INFO][0m:    	[32m[1mnustti_timetable[0m: min API 24, includes recipes ([32mfreetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer[0m), built for archs ([34marm64-v8a[0m)
+[1m[INFO][0m:    [1m[94mnustti_timetable has compatible recipes, using this one[0m
+[1m[90m[DEBUG][39m[0m:   All possible dists: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching name and arch: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching ndk_api and recipe: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[INFO][0m:    Of the existing distributions, the following meet the given requirements:
+[1m[INFO][0m:    	[32m[1mnustti_timetable[0m: min API 24, includes recipes ([32mfreetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer[0m), built for archs ([34marm64-v8a[0m)
+[1m[INFO][0m:    [1m[94mnustti_timetable has compatible recipes, using this one[0m
+[1m[INFO][0m:    [36m-> directory context /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/build/bootstrap_builds/sdl2[39m
+[1m[INFO][0m:    [36m<- directory context /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android[39m
+[1m[INFO][0m:    [36m-> directory context /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/dists/nustti_timetable[39m
+[1m[90m[DEBUG][39m[0m:   Remove directory and subdirectory src/main/assets
+[1m[90m[DEBUG][39m[0m:   Create directory src/main/assets
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/main.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_bgpick.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_model.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_bg.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_theme.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_views.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/sitecustomize.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_datepick.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/kb_parser.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/tt_settings.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/store.py'...
+Compiling '/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/app/jwgl_client.py'...
+[1m[90m[DEBUG][39m[0m:   Remove directory and subdirectory /tmp/p4a-extra-env-6gbvixbi
+[1m[90m[DEBUG][39m[0m:   Remove directory and subdirectory src/main/res
+[1m[INFO][0m:    Detected highest available build tools version to be 37.0.0
+stty: 'standard input': Inappropriate ioctl for device
+[1m[90m[DEBUG][39m[0m:   [90m->[0m running gradlew clean assembleDebug[0m
+[1m[90m[DEBUG][39m[0m:   	Downloading https://services.gradle.org/distributions/gradle-8.14.3-all.zip
+[1m[90m[DEBUG][39m[0m:   	.............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+[1m[90m[DEBUG][39m[0m:   	Unzipping /home/runner/.gradle/wrapper/dists/gradle-8.14.3-all/h9bud5ffjflfoe91ghcb596uv/gradle-8.14.3-all.zip to /home/runner/.gradle/wrapper/dists/gradle-8.14.3-all/h9bud5ffjflfoe91ghcb596uv
+[1m[90m[DEBUG][39m[0m:   	Set executable permissions for: /home/runner/.gradle/wrapper/dists/gradle-8.14.3-all/h9bud5ffjflfoe91ghcb596uv/gradle-8.14.3/bin/gradle
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	Welcome to Gradle 8.14.3!
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	Here are the highlights of this release:
+[1m[90m[DEBUG][39m[0m:   	 - Java 24 support
+[1m[90m[DEBUG][39m[0m:   	 - GraalVM Native Image toolchain selection
+[1m[90m[DEBUG][39m[0m:   	 - Enhancements to test reporting
+[1m[90m[DEBUG][39m[0m:   	 - Build Authoring improvements
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	For more details see https://docs.gradle.org/8.14.3/release-notes.html
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	Starting a Gradle Daemon (subsequent builds will be faster)
+[1m[90m[DEBUG][39m[0m:   	> Task :clean
+[1m[90m[DEBUG][39m[0m:   	> Task :preBuild UP-TO-DATE
+[1m[90m[DEBUG][39m[0m:   	> Task :preDebugBuild UP-TO-DATE
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugNativeDebugMetadata NO-SOURCE
+[1m[90m[DEBUG][39m[0m:   	> Task :javaPreCompileDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :generateDebugResValues
+[1m[90m[DEBUG][39m[0m:   	> Task :checkDebugAarMetadata
+[1m[90m[DEBUG][39m[0m:   	> Task :mapDebugSourceSetPaths
+[1m[90m[DEBUG][39m[0m:   	> Task :generateDebugResources
+[1m[90m[DEBUG][39m[0m:   	> Task :packageDebugResources
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugResources
+[1m[90m[DEBUG][39m[0m:   	> Task :createDebugCompatibleScreenManifests
+[1m[90m[DEBUG][39m[0m:   	> Task :extractDeepLinksDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :parseDebugLocalResources
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	> Task :processDebugMainManifest
+[1m[90m[DEBUG][39m[0m:   	/home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/dists/nustti_timetable/src/main/AndroidManifest.xml:61:18-50 Warning:
+[1m[90m[DEBUG][39m[0m:   		android:extractNativeLibs should not be specified in this source AndroidManifest.xml file. See https://d.android.com/guide/topics/manifest/application-element#extractNativeLibs for more information.
+[1m[90m[DEBUG][39m[0m:   	The AGP Upgrade Assistant can remove the attribute from the AndroidManifest.xml file and update the build file accordingly. See https://d.android.com/studio/build/agp-upgrade-assistant for more information.
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	> Task :processDebugManifest
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugShaders
+[1m[90m[DEBUG][39m[0m:   	> Task :compileDebugShaders NO-SOURCE
+[1m[90m[DEBUG][39m[0m:   	> Task :generateDebugAssets UP-TO-DATE
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugAssets
+[1m[90m[DEBUG][39m[0m:   	> Task :processDebugJavaRes NO-SOURCE
+[1m[90m[DEBUG][39m[0m:   	> Task :processDebugManifestForPackage
+[1m[90m[DEBUG][39m[0m:   	> Task :checkDebugDuplicateClasses
+[1m[90m[DEBUG][39m[0m:   	> Task :compressDebugAssets
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugJavaResource
+[1m[90m[DEBUG][39m[0m:   	> Task :desugarDebugFileDependencies
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeExtDexDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeLibDexDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugJniLibFolders
+[1m[90m[DEBUG][39m[0m:   	> Task :processDebugResources
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeDebugNativeLibs
+[1m[90m[DEBUG][39m[0m:   	> Task :validateSigningDebug
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	> Task :compileDebugJavaWithJavac
+[1m[90m[DEBUG][39m[0m:   	Note: Some input files use or override a deprecated API.
+[1m[90m[DEBUG][39m[0m:   	Note: Recompile with -Xlint:deprecation for details.
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	> Task :dexBuilderDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :writeDebugAppMetadata
+[1m[90m[DEBUG][39m[0m:   	> Task :writeDebugSigningConfigVersions
+[1m[90m[DEBUG][39m[0m:   	> Task :stripDebugDebugSymbols
+[1m[90m[DEBUG][39m[0m:   	> Task :mergeProjectDexDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :packageDebug
+[1m[90m[DEBUG][39m[0m:   	> Task :createDebugApkListingFileRedirect
+[1m[90m[DEBUG][39m[0m:   	> Task :assembleDebug
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	[Incubating] Problems report is available at: file:///home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/dists/nustti_timetable/build/reports/problems/problems-report.html
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	For more on this, please refer to https://docs.gradle.org/8.14.3/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+[1m[90m[DEBUG][39m[0m:   	
+[1m[90m[DEBUG][39m[0m:   	BUILD SUCCESSFUL in 44s
+[1m[90m[DEBUG][39m[0m:   	34 actionable tasks: 34 executed
+[1m[INFO][0m:    [36m<- directory context /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/python-for-android[39m
+[1m[90m[DEBUG][39m[0m:   All possible dists: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching name and arch: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[90m[DEBUG][39m[0m:   Dist matching ndk_api and recipe: [<Distribution: name nustti_timetable with recipes (freetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer)>]
+[1m[INFO][0m:    Of the existing distributions, the following meet the given requirements:
+[1m[INFO][0m:    	[32m[1mnustti_timetable[0m: min API 24, includes recipes ([32mfreetype, hostpython3, jpeg, libffi, openssl, png, sdl2_image, sdl2_mixer, sdl2_ttf, sqlite3, python3, sdl2, pillow, pyjnius, setuptools, android, kivy, filetype, idna, chardet, certifi, openpyxl, requests, urllib3, six, charset-normalizer[0m), built for archs ([34marm64-v8a[0m)
+[1m[INFO][0m:    [1m[94mnustti_timetable has compatible recipes, using this one[0m
+[1m[INFO][0m:    [1m[32m# Copying android package to current directory[0m[39m
+[1m[INFO][0m:    [1m[32m# Android package filename not found in build output. Guessing...[0m[39m
+[1m[INFO][0m:    [1m[32m# Found android package file: /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/dists/nustti_timetable/build/outputs/apk/debug/nustti_timetable-debug.apk[0m[39m
+[1m[INFO][0m:    # Add version number to android package
+[1m[INFO][0m:    # Android package renamed to nustti_timetable-debug-1.0.2.apk
+stty: 'standard input': Inappropriate ioctl for device
+[1m[90m[DEBUG][39m[0m:   [90m->[0m running cp /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/dists/nustti_timetable/build/outputs/apk/debug/nustti_timetable-debug.apk nustti_timetable-debug-1.0.2.apk[0m
+No setup.py/pyproject.toml used, copying full private data into .apk.
+Applying Java source code patches...
+Applying patch: src/patches/SDLActivity.java.patch
+Warning: failed to apply patch (exit code 1), assuming it is already applied:  src/patches/SDLActivity.java.patch
+Applying patch: src/patches/SDLSurface.java.patch
+Warning: failed to apply patch (exit code 1), assuming it is already applied:  src/patches/SDLSurface.java.patch
+# Copy /home/runner/work/nustti-timetable/nustti-timetable/.buildozer/android/platform/build-arm64-v8a/dists/nustti_timetable/build/outputs/apk/debug/nustti_timetable-debug.apk to /home/runner/work/nustti-timetable/nustti-timetable/bin/nustti_timetable-1.0.2-arm64-v8a-debug.apk
+# Android packaging done!
+# APK nustti_timetable-1.0.2-arm64-v8a-debug.apk available in the bin directory
