@@ -27,11 +27,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import threading
-import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -85,11 +85,13 @@ from kivy.uix.widget import Widget
 import store
 import tt_bg
 import tt_bgpick
+import tt_datepick
 import tt_model
+import tt_settings
 import tt_theme
 from tt_bg import BASE_BG, BackgroundLayer
 from tt_settings import CaptchaDialog, SettingsOverlay
-from tt_theme import THEME, rgba
+from tt_theme import THEME, rgba, u
 from tt_views import (CellPickDialog, Ctx, Panel, TabBar, TodayView, TopBar, WeekView,
                       _label)
 
@@ -476,7 +478,8 @@ class TimetableApp(App):
             "student_id": panel.id_text.text.strip(),
             "password": store.obfuscate(panel.pwd_text.text) if panel.remember.active else "",
             "remember_password": bool(panel.remember.active),
-            "term_start": panel.term_text.text.strip(),
+            "term_start": (tt_datepick.normalize_date(panel.term_text.text)
+                           or panel.term_text.text.strip()),
             "total_weeks": int(panel.weeks.value),
             "font_family": panel.family.text,
             "font_scale": tt_theme.clamp_scale(panel.scale.value),
@@ -569,6 +572,10 @@ class TimetableApp(App):
             ("settings", self.open_settings),
             # 设置页滚到底部再截一张：1080+ 高分屏最容易在页脚附近堆叠重叠
             ("settings_bottom", self._sc_scroll_settings),
+            # P2：字体族下拉展开态（原来看不清那排小字）—— 展开后截图，再逐个量字号/行高
+            ("settings_font_list", self._sc_open_font_list),
+            # P3：学期首日「选择日期」日历弹窗（原来只能手敲）—— 截图 + 点选回填 + 归一校验
+            ("settings_term_pick", self._sc_open_term_picker),
             # 背景选择器：修复前这里是"弹窗里一片空白、选不到图"（FileChooserListView 在
             # 手机端列不出文件），现在换成自研选择器，本步直接打开并截图，列表有没有图、
             # 能不能选中、选中后背景层是否真的换图，全由 _sc_bg_picker_check() 给 bool 判据。
@@ -579,7 +586,7 @@ class TimetableApp(App):
             ("settings_bg", self._sc_settings_bg),
         ]
         Clock.schedule_once(self._sc_run_step, 2.4)
-        Clock.schedule_once(self._sc_watchdog, 90)      # 兜底：任何一步卡死也能收尾
+        Clock.schedule_once(self._sc_watchdog, 150)     # 兜底：任何一步卡死也能收尾
 
     def _sc_watchdog(self, _dt: float) -> None:
         if self._sc_done:
@@ -600,24 +607,52 @@ class TimetableApp(App):
             self._sc_report.setdefault("errors", []).append(f"{name}: {exc}")
         Clock.schedule_once(lambda *_: self._sc_capture(name), 0.8)
 
-    def _sc_capture(self, name: str) -> None:
+    def _sc_capture(self, name: str, attempt: int = 0) -> None:
+        """拍一帧。Kivy 的 Window.screenshot 走 SDL2 glReadPixels，本机偶发两类毛病：
+        留下 0 字节文件、或者读到更早一帧的缓冲（新步骤的图和前面某步一模一样）。
+        所以每步最多拍 4 拍，只要"字节哈希撞上本轮已出现过的任意一张"就判定为陈旧帧重拍。
+
+        注意：重拍**不能在主线程里 sleep**。sleep 会挡住 Kivy 主循环，主循环不转就重绘不了，
+        弹窗的淡入动画（ModalView._anim_alpha 0→1）也永远走不完 —— 越睡越只能读到旧帧。
+        所以这里一拍一张图，把下一拍交给 Clock 排，中间留出真正的主循环时间。
+        """
         shot = os.path.join(self._sc_dir, f"{name}.png")
         entry: Dict[str, Any] = {"screenshot": shot, "mode": self.mode}
-        # Kivy 的 Window.screenshot 走 SDL2 glReadPixels，偶发只在磁盘上留下 0 字节文件
-        # （提前返回、上下文未就绪等），此处最多重试 4 次，并把字节数写进报告，
-        # 避免"文件存在但内容为空"被当成截图成功。
-        for attempt in range(4):
+        hashes = getattr(self, "_sc_shot_hashes", None)
+        if hashes is None:
+            hashes = self._sc_shot_hashes = {}
+        try:
+            real = Window.screenshot(name=shot) or ""
+            if isinstance(real, str) and real:
+                shot = real                          # Kivy 会给缺省模板补 0001 等序号
+        except Exception as exc:
+            self._sc_report.setdefault("errors", []).append(f"screenshot {name}: {exc}")
+        digest = ""
+        if os.path.isfile(shot) and os.path.getsize(shot) > 0:
             try:
-                real = Window.screenshot(name=os.path.join(self._sc_dir, f"{name}.png")) or ""
-                if isinstance(real, str) and real:
-                    shot = real                      # Kivy 会给缺省模板补 0001 等序号
-                time.sleep(0.5)
+                with open(shot, "rb") as fh:
+                    digest = hashlib.md5(fh.read()).hexdigest()
             except Exception as exc:
-                self._sc_report.setdefault("errors", []).append(f"screenshot {name}: {exc}")
-                break
-            if os.path.isfile(shot) and os.path.getsize(shot) > 0:
-                break
-            print(f"[SC] 截图 {name} 第 {attempt + 1} 次落盘为空，重试", flush=True)
+                self._sc_report.setdefault("errors", []).append(f"hash {name}: {exc}")
+        if digest and digest not in hashes.values():
+            hashes[name] = digest
+            entry["md5"] = digest
+            entry["stale_retries"] = attempt
+            self._sc_finalize_step(name, shot, entry)
+            return
+        entry["stale_retries"] = attempt + 1
+        if os.path.isfile(shot):                    # 陈旧帧文件留着，但记进报告（不作为判据）
+            entry.setdefault("superseded", []).append(
+                {"file": shot, "md5": digest[:8], "bytes": os.path.getsize(shot)})
+        print(f"[SC] 截图 {name} 第 {attempt + 1} 次不可用（{digest[:8] or '空文件'}），重拍",
+              flush=True)
+        if attempt + 1 < 4:
+            Clock.schedule_once(lambda *_: self._sc_capture(name, attempt + 1), 0.45)
+            return
+        self._sc_finalize_step(name, shot, entry)
+
+    def _sc_finalize_step(self, name: str, shot: str, entry: Dict[str, Any]) -> None:
+        """一步走完：落报告字段 → 跑该步判据 → 关掉本步的弹窗 → 排下一步。"""
         entry["screenshot"] = shot
         entry["exists"] = os.path.isfile(shot)
         entry["bytes"] = os.path.getsize(shot) if os.path.isfile(shot) else 0
@@ -641,6 +676,22 @@ class TimetableApp(App):
                 entry["bg_picker_check"] = self._sc_bg_picker_check()
             except Exception as exc:
                 entry["bg_picker_check"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            try:            # P1：另起一棵"手机相册"式测试树，量它能不能当"所有照片"用
+                entry["all_photos_check"] = self._sc_all_photos_check()
+            except Exception as exc:
+                entry["all_photos_check"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        if name == "settings_font_list":
+            # P2：下拉还开着，先量每一项的字号 / 行高，再让它自己合上
+            try:
+                entry["font_list_check"] = self._sc_font_list_check()
+            except Exception as exc:
+                entry["font_list_check"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        if name == "settings_term_pick":
+            # P3：日历弹窗还开着，点一天 → 点确定 → 看输入框有没有被回填
+            try:
+                entry["term_pick_check"] = self._sc_term_picker_check()
+            except Exception as exc:
+                entry["term_pick_check"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         self._sc_report.setdefault("steps", []).append(entry)
         if name.startswith("cell_pick_dialog") and self._pick_dialog is not None:
             try:
@@ -682,6 +733,12 @@ class TimetableApp(App):
                 self._sc_checks["settings_spacing"] = step["settings_spacing"]
             if step.get("bg_picker_check"):
                 self._sc_checks["bg_picker"] = step["bg_picker_check"]
+            if step.get("all_photos_check"):
+                self._sc_checks["all_photos"] = step["all_photos_check"]
+            if step.get("font_list_check"):
+                self._sc_checks["font_list"] = step["font_list_check"]
+            if step.get("term_pick_check"):
+                self._sc_checks["term_pick"] = step["term_pick_check"]
         layout = self._describe_layout()
         report = {
             "app": "NUSTTI_Timetable_Kivy",
@@ -717,6 +774,9 @@ class TimetableApp(App):
         cell = self._sc_checks.get("cell_pick") or {}
         spacing = self._sc_checks.get("settings_spacing") or {}
         bg = self._sc_checks.get("bg_picker") or {}
+        photos = self._sc_checks.get("all_photos") or {}
+        fonts = self._sc_checks.get("font_list") or {}
+        term_pick = self._sc_checks.get("term_pick") or {}
         report["assertions"] = {
             "views_rendered": len(report["steps"]) == len(self._sc_steps),
             "screenshots_saved": all(s.get("bytes", 0) > 0 for s in report["steps"]),
@@ -752,7 +812,24 @@ class TimetableApp(App):
             # ⑥ 缩放 / 透明度滑块必须真的改变绘制结果（50% 缩一半、200% 放大一倍；0% 全透）
             "bg_zoom_ok": bool(bg.get("zoom_ok")),
             "bg_alpha_ok": bool(bg.get("alpha_ok")),
+            # ---- 主人这轮报的三点（P1 / P2 / P3）回归判据 ----
+            # P1 背景选择器要像系统「所有照片」：各相册目录 + 嵌套子目录 + 常见格式全收，
+            #    非图片不混入，张数上限放宽（原来卡在 40 张，"只能看到一部分"）
+            "bg_all_photos_ok": bool(photos.get("ok")),
+            "bg_all_photos_nested_ok": bool(photos.get("nested_ok")),
+            "bg_all_photos_formats_ok": bool(photos.get("formats_ok")),
+            "bg_all_photos_cap_ok": bool(photos.get("cap_ok") and not photos.get("missed")),
+            # P2 字体族下拉展开后的小字要看得清：选项字号 / 行高都够大且用中文字体
+            "font_dropdown_readable_ok": bool(fonts.get("ok")),
+            # P3 学期首日要能点着选：日历弹窗开得起来、6×7 格子齐全、点一天回填成 YYYY-MM-DD
+            "term_picker_ok": bool(term_pick.get("ok")),
+            "term_picker_grid_ok": bool(term_pick.get("grid_ok")),
+            "term_picker_fill_ok": bool(term_pick.get("filled_ok")),
         }
+        report["assertions"]["all_three_reports_ok"] = bool(
+            report["assertions"]["bg_all_photos_ok"]
+            and report["assertions"]["font_dropdown_readable_ok"]
+            and report["assertions"]["term_picker_ok"])
         report["assertions"]["all_bg_ok"] = bool(
             report["assertions"]["bg_picker_opened_ok"]
             and report["assertions"]["bg_picker_listed_ok"]
@@ -771,10 +848,11 @@ class TimetableApp(App):
             and report["assertions"]["card_room_ok"]
             and report["assertions"]["card_time_ok"]
             and report["assertions"]["settings_spacing_ok"])
-        # 一票总判：界面布局 + 历史三处修复 + 本轮「自定义背景」全部达标
+        # 一票总判：界面布局 + 历史三处修复 + 自定义背景 + 主人本轮报的 P1/P2/P3 全部达标
         report["assertions"]["all_ok"] = bool(report["assertions"]["all_layout_ok"]
                                               and report["assertions"]["all_fixes_ok"]
-                                              and report["assertions"]["all_bg_ok"])
+                                              and report["assertions"]["all_bg_ok"]
+                                              and report["assertions"]["all_three_reports_ok"])
         path = os.path.join(self._sc_dir, "selfcheck_report.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(report, fh, ensure_ascii=False, indent=2)
@@ -870,8 +948,261 @@ class TimetableApp(App):
             scroll.scroll_y = 0.0
 
     # ------------------------------------------------------------------ #
+    # 自检：字体族下拉可读性（P2）/ 学期首日点选日历（P3）
+    # ------------------------------------------------------------------ #
+    def _sc_scroll_to(self, panel: Any, widget: Any) -> None:
+        """把设置页滚到某个控件附近（保证弹窗/下拉打开时控件落在可视区里）。"""
+        scroll = getattr(panel, "scroll", None)
+        if scroll is None or widget is None:
+            return
+        try:
+            scroll.scroll_to(widget, padding=u(12), animate=False)
+        except Exception as exc:
+            self._sc_report.setdefault("errors", []).append(f"scroll to widget: {exc}")
+
+    @staticmethod
+    def _sc_geo(widget: Any) -> List[float]:
+        """量一个控件的窗口坐标与尺寸（拿不到就返回 0）。"""
+        if widget is None:
+            return [0.0, 0.0, 0.0, 0.0]
+        try:
+            x, y = widget.to_window(*widget.pos)
+            return [round(float(v), 1) for v in (x, y, widget.width, widget.height)]
+        except Exception:
+            return [round(float(getattr(widget, "x", 0) or 0), 1),
+                    round(float(getattr(widget, "y", 0) or 0), 1),
+                    round(float(getattr(widget, "width", 0) or 0), 1),
+                    round(float(getattr(widget, "height", 0) or 0), 1)]
+
+    def _sc_open_font_list(self) -> None:
+        """自检用：展开「字体族」下拉并截图（P2：原来展开后的小字看不清）。"""
+        self.open_settings()
+        panel = self._settings
+        if panel is None:
+            return
+        self._sc_scroll_to(panel, panel.family)
+        panel.family.is_open = True
+        # 展开瞬间先量一遍几何：设置页若还没完成布局，下拉会按 100px 的默认宽度落地，
+        # 宽度算成 0 时整排选项就是一排看不见的空白（P2 展开态的真正死因）。
+        dd = getattr(panel.family, "_dropdown", None)
+        self._sc_font_geo_open = {
+            "spinner": self._sc_geo(panel.family),
+            "dropdown": self._sc_geo(dd),
+            "container": self._sc_geo(getattr(dd, "container", None)),
+            "auto_width": bool(getattr(dd, "auto_width", True)),
+        }
+        try:                                        # 布局已就位时重算一次，等价于真机上"展开"
+            dd._reposition()
+        except Exception as exc:
+            self._sc_report.setdefault("errors", []).append(f"font list reposition: {exc}")
+
+    def _sc_font_list_check(self) -> Dict[str, Any]:
+        """字体族下拉项判据：字号与行高都得够大（原来看不清就是这两项偏小）。"""
+        panel = self._settings
+        spinner = getattr(panel, "family", None) if panel is not None else None
+        dropdown = getattr(spinner, "_dropdown", None) if spinner is not None else None
+        items = list(getattr(getattr(dropdown, "container", None), "children", None) or [])
+        if not items:
+            items = list(getattr(panel, "family_options", None) or [])
+        ctx_font = str(getattr(self.ctx, "font", "") or "")
+        want_fs = float(self.ctx.fs(tt_settings.FAMILY_OPT_FS)) if self.ctx else 0.0
+        want_h = float(u(tt_settings.FAMILY_OPT_H))
+        # 允许 Kivy 内部换算造成的毫厘差，但不允许"悄悄又变小了"
+        floor_fs = max(12.0, want_fs * 0.95)
+        floor_h = max(30.0, want_h * 0.95)
+        fonts = [float(getattr(i, "font_size", 0) or 0) for i in items]
+        heights = [float(getattr(i, "height", 0) or 0) for i in items]
+        names = [str(getattr(i, "font_name", "") or "") for i in items]
+        state = {
+            "items": len(items),
+            "min_font": round(min(fonts), 2) if fonts else 0.0,
+            "min_height": round(min(heights), 2) if heights else 0.0,
+            "want_font": round(want_fs, 2), "want_height": round(want_h, 2),
+            "floor_font": round(floor_fs, 2), "floor_height": round(floor_h, 2),
+            "font_applied": bool(names) and all(n == ctx_font for n in names),
+            "open_before_close": bool(getattr(spinner, "is_open", False)),
+            "max_height_cap": round(float(getattr(dropdown, "max_height", 0) or 0), 1),
+            "sample": [str(getattr(i, "text", "")) for i in items[:4]],
+        }
+        # 展开态几何判据：下拉必须真的挂在窗口上、宽度贴合控件、整排选项有可视宽度。
+        # （展开瞬间设置页若还没布局，Kivy 会按 100px 默认宽算，宽度为 0 时就是"看得见
+        #  却一片空白"——这一步专门锁死这种回归。）
+        try:
+            dd = dropdown
+            state["attach"] = (type(dd.parent).__name__
+                               if dd is not None and dd.parent is not None else "")
+            state["size"] = [round(float(v), 1) for v in (dd.size if dd else (0, 0))]
+            state["pos"] = [round(float(v), 1) for v in (dd.pos if dd else (0, 0))]
+            state["spinner_geo"] = self._sc_geo(spinner)
+            state["dropdown_geo"] = self._sc_geo(dd)
+            state["geo_at_open"] = getattr(self, "_sc_font_geo_open", None)
+            if dd is not None:
+                try:                                # 布局已就位，重算一次让宽度落到控件宽度
+                    dd._reposition()
+                except Exception as exc:
+                    self._sc_report.setdefault("errors", []).append(f"font list reposition: {exc}")
+            state["width_after_reposition"] = round(float(getattr(dd, "width", 0) or 0), 1)
+            state["container_w"] = round(float(getattr(getattr(dd, "container", None),
+                                                      "width", 0) or 0), 1)
+            widths = [float(getattr(i, "width", 0) or 0) for i in items]
+            state["min_item_w"] = round(min(widths), 1) if widths else 0.0
+            spinner_w = float(getattr(spinner, "width", 0) or 0)
+            state["want_dd_w"] = round(spinner_w * 0.6, 1)
+            state["dd_wide_ok"] = (float(getattr(dd, "width", 0) or 0) >= spinner_w * 0.6
+                                   > 0)
+            state["dd_tall_ok"] = float(getattr(dd, "height", 0) or 0) > u(30)
+            state["items_visible_ok"] = bool(widths) and min(widths) > u(20)
+        except Exception as exc:
+            state["attach"] = f"error: {type(exc).__name__}: {exc}"
+            state["dd_wide_ok"] = state["dd_tall_ok"] = state["items_visible_ok"] = False
+        # 真点一下选项：等价于主人展开后点某个字体名，Spinner 文本应当跟着变
+        try:
+            target = str(getattr(items[0], "text", "") or "")
+            items[0].dispatch("on_release")
+            state["tap_target"] = target
+            state["tap_text"] = str(getattr(spinner, "text", "") or "")
+            state["tap_ok"] = bool(target) and state["tap_text"] == target
+        except Exception as exc:
+            state["tap_ok"] = False
+            state["tap_error"] = f"{type(exc).__name__}: {exc}"
+        state["ok"] = bool(state["items"] >= 2
+                           and fonts and min(fonts) >= floor_fs
+                           and heights and min(heights) >= floor_h
+                           and state["font_applied"]
+                           and state["max_height_cap"] > 0
+                           and state["attach"]
+                           and state.get("dd_wide_ok")
+                           and state.get("dd_tall_ok")
+                           and state.get("items_visible_ok")
+                           and state.get("tap_ok"))
+        if spinner is not None:                     # 合上下拉，别挡住后面的截图
+            try:
+                spinner.is_open = False
+            except Exception as exc:
+                self._sc_report.setdefault("errors", []).append(f"close font list: {exc}")
+        return state
+
+    def _sc_open_term_picker(self) -> None:
+        """自检用：点设置页「选择日期」按钮，打开日历弹窗并截图（P3）。"""
+        self.open_settings()
+        panel = self._settings
+        if panel is None:
+            return
+        self._sc_scroll_to(panel, panel.term_btn)
+        panel.term_btn.dispatch("on_release")       # 等价于主人用手指点一下
+
+    def _sc_term_picker_check(self) -> Dict[str, Any]:
+        """学期首日判据：日历开得起来、6×7 格子齐全、点一天能回填成 YYYY-MM-DD。"""
+        panel = self._settings
+        dialog = getattr(panel, "date_picker", None) if panel is not None else None
+        if dialog is None:
+            return {"ok": False, "error": "日历弹窗没打开"}
+        before = str(panel.term_text.text or "")
+        state = dialog.described()
+        cells = int(state.get("cells") or 0)
+        days = int(state.get("days_in_month") or 0)
+        grid_ok = bool(cells == tt_datepick.CELLS
+                       and int(state.get("day_buttons") or 0) == days
+                       and int(state.get("offset") or 0) == tt_datepick.month_offset(
+                           int(state["year"]), int(state["month"])))
+        day = min(15, max(1, days))
+        expected = f"{int(state['year']):04d}-{int(state['month']):02d}-{day:02d}"
+        picked = dialog.pick_day(day)
+        dialog._confirm()                           # 点「确定」→ 回填设置页输入框
+        after = str(panel.term_text.text or "")
+        filled_ok = bool(picked == expected and after == expected
+                         and tt_datepick.normalize_date(after) == expected)
+        # 关弹窗：dismiss 是 0.1s 淡出动画（异步），自检里不等它，直接摘下来，
+        # 免得残留的日历盖住后面几步的截图。顺便把"到底关没关掉"量成字段。
+        close_err = ""
+        try:
+            dialog.popup.dismiss(animation=False)
+        except Exception as exc:
+            close_err = f"{type(exc).__name__}: {exc}"
+        self._sc_date_popup_probe = dialog.popup      # 供后续步骤复核是否真的摘掉了
+        open_after = bool(getattr(dialog.popup, "_window", None) is not None)
+        try:                                        # 还原原值，不污染后续步骤
+            panel._term_start_picked(before)
+        except Exception:
+            panel.term_text.text = before
+        return {"ok": bool(state.get("popup_open") and grid_ok and filled_ok
+                           and not open_after),
+                "popup_open": bool(state.get("popup_open")),
+                "popup_open_after_close": open_after,
+                "close_error": close_err,
+                "cells": cells, "grid_ok": grid_ok,
+                "day_buttons": int(state.get("day_buttons") or 0),
+                "days_in_month": days, "cells_required": int(tt_datepick.CELLS),
+                "offset": int(state.get("offset") or 0),
+                "header": state.get("header") or [],
+                "hint": str(state.get("hint") or ""),
+                "value_before": before, "picked": picked, "value_after": after,
+                "expected": expected, "filled_ok": filled_ok,
+                "normalized_ok": tt_datepick.normalize_date(after) == expected}
+
+    # ------------------------------------------------------------------ #
     # 自检：自定义背景（选择器 / 缩放 / 透明度）
     # ------------------------------------------------------------------ #
+    def _sc_all_photos_check(self) -> Dict[str, Any]:
+        """P1 判据：造一棵"手机相册"式的目录树，看选择器能不能当"所有照片"用。
+
+        原来只能列出部分图片，根因有二：候选目录太窄（只认识 Pictures/DCIM 那几层）、
+        单目录 40 张封顶。这里造出多目录 + 多格式 + 嵌套子目录的小相册，直接量：
+        每张都要被扫到（嵌套目录算数）、非图片不许混进来、格式白名单够宽、上限不寒酸。
+        """
+        folder = os.path.join(self._sc_dir, "album")
+        sub = os.path.join(folder, "WeiXin", "images")
+        deep = os.path.join(folder, "DCIM", "Camera")
+        made: List[str] = []
+        try:
+            from PIL import Image as _PILImage
+            for path in (folder, sub, deep):
+                os.makedirs(path, exist_ok=True)
+            plan = [(folder, "album_01.jpg"), (folder, "album_02.JPEG"),
+                    (sub, "wechat_01.png"), (sub, "wechat_02.webp"),
+                    (deep, "cam_01.bmp"), (deep, "cam_02.GIF"),
+                    (deep, "cam_03.tiff")]
+            for path, name in plan:
+                target = os.path.join(path, name)
+                _PILImage.new("RGB", (64, 64), (200, 180, 60)).save(target)
+                made.append(target)
+        except Exception as exc:
+            return {"ok": False, "error": f"造测试相册失败：{exc}"}
+        junk = os.path.join(sub, "readme.txt")       # 混一个非图片，必须被过滤掉
+        try:
+            with open(junk, "w", encoding="utf-8") as fh:
+                fh.write("not an image")
+        except OSError:
+            junk = ""
+
+        original = tt_bgpick.candidate_dirs
+        tt_bgpick.candidate_dirs = lambda current="", extra=None: [folder]
+        try:                                          # 只扫这棵测试相册，结果可预期
+            found = tt_bgpick.scan_all_images(roots=[folder], budget=2.0)
+        finally:
+            tt_bgpick.candidate_dirs = original
+        paths = {os.path.abspath(str(item.get("path") or "")) for item in found}
+        missed = [os.path.basename(p) for p in made if os.path.abspath(p) not in paths]
+        wanted_exts = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tif", ".tiff",
+                       ".heic", ".heif", ".jfif", ".avif")
+        exts_ok = all(ext in tt_bgpick.IMAGE_EXTS for ext in wanted_exts)
+        nested_ok = all(os.path.abspath(p) in paths for p in made
+                        if os.sep + "WeiXin" in p or os.sep + "Camera" in p)
+        junk_ok = (not junk) or os.path.abspath(junk) not in paths
+        cap_ok = bool(int(tt_bgpick.SCAN_TOTAL) >= 1000 and int(tt_bgpick.PAGE) >= 40)
+        probe = getattr(self, "_sc_date_popup_probe", None)
+        return {"ok": bool(not missed and nested_ok and junk_ok and exts_ok and cap_ok
+                           and not (probe is not None and getattr(probe, "_window", None) is not None)),
+                "date_popup_left": bool(probe is not None
+                                        and getattr(probe, "_window", None) is not None),
+                "album": folder, "made": len(made), "found": len(made) - len(missed),
+                "missed": missed, "nested_ok": nested_ok, "junk_ignored": junk_ok,
+                "formats_ok": exts_ok, "cap_ok": cap_ok,
+                "page": int(tt_bgpick.PAGE), "scan_total": int(tt_bgpick.SCAN_TOTAL),
+                "image_exts": list(tt_bgpick.IMAGE_EXTS),
+                "scan_roots": len(tt_bgpick.storage_roots()),
+                "candidates": len(tt_bgpick.candidate_dirs())}
+
     def _sc_make_bg_image(self) -> str:
         """造一张自检用的背景图（放在自检目录的 bgtest 子目录里，不碰主人的任何文件）。
 
@@ -903,20 +1234,42 @@ class TimetableApp(App):
         self._sc_bg_before = str(self.cfg.get("bg_image") or "")
         self._sc_bg_test_image = self._sc_make_bg_image()
         extra = [os.path.dirname(self._sc_bg_test_image)] if self._sc_bg_test_image else None
+        log: Dict[str, Any] = {"had_settings": self._settings is not None,
+                               "test_image": self._sc_bg_test_image, "extra": extra}
         self.open_settings()
         panel = self._settings
+        log["panel_after"] = type(panel).__name__ if panel is not None else None
+        self._sc_bg_open_log = log
         if panel is None:
             return
         panel._choose_bg(extra_dirs=extra)
+        log["dialog_after_choose"] = type(getattr(panel, "bg_picker", None)).__name__
 
     def _sc_bg_picker_check(self) -> Dict[str, Any]:
         """背景选择器 + 缩放 + 透明度的回归判据（全部给 bool，不靠肉眼）。"""
         panel = self._settings
         dialog = getattr(panel, "bg_picker", None) if panel is not None else None
         if dialog is None:
-            return {"ok": False, "error": "背景选择器没打开"}
+            return {"ok": False, "error": "背景选择器没打开",
+                    "log": getattr(self, "_sc_bg_open_log", None),
+                    "settings_none": panel is None,
+                    "window_kids": [type(w).__name__ for w in Window.children]}
         target = str(self._sc_bg_test_image or "")
         state = dialog.described()
+        # 诊断：截图偶发读到陈旧帧（本机 glReadPixels 会回很久以前的缓冲），所以这里
+        # 把弹窗在窗口树里的真实状态量成字段 —— 附不附到 Window、动画值、几何，一看便知。
+        window_kids = [type(w).__name__ for w in Window.children]
+        # BackgroundPickerDialog 是「壳 + Popup」结构，真正上屏的是里面的 popup，几何要量它
+        box = getattr(dialog, "popup", None) or getattr(dialog, "_popup", None)
+        tree = {"window_children": window_kids,
+                "box": type(box).__name__ if box is not None else None,
+                "dialog_attached": bool(box is not None and getattr(box, "_window", None) is not None),
+                "dialog_alpha": round(float(getattr(box, "_anim_alpha", -1.0)), 3) if box is not None else None,
+                "dialog_geo": ([round(float(v), 1) for v in (box.x, box.y, box.width, box.height)]
+                               if box is not None else None),
+                "overlay_attached": bool(panel is not None
+                                         and getattr(panel, "_window", None) is not None),
+                "overlay_kids": [type(w).__name__ for w in (panel.children if panel else [])][:4]}
         paths = [os.path.abspath(str(p)) for p in (state.get("paths") or [])]
         listed = bool(target) and os.path.abspath(target) in paths
         images = int(state.get("images") or 0)
@@ -970,6 +1323,7 @@ class TimetableApp(App):
 
         return {"ok": bool(listed and rows >= 1 and images >= 1 and pick_ok and apply_ok
                            and zoom_ok and alpha_ok),
+                "tree": tree,
                 "popup_open": bool(state.get("popup_open")),
                 "listed_ok": listed, "test_image": target,
                 "images": images, "rows": rows, "thumbs": int(state.get("thumbs") or 0),

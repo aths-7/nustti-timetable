@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """背景图选择器（自研，替代手机端不可用的 ``FileChooserListView``）。
 
-为什么要换掉 Kivy 自带的文件选择器（主人截图里的 bug 根因）：
+为什么要换掉 Kivy 自带的文件选择器（最早截图里的 bug 根因）：
     1. 起始目录取 ``os.path.expanduser("~")``。python-for-android 环境里 HOME 未设置，
        expanduser 会"原样返回 ~"；接着 ``os.path.isdir("~")`` 为假，退回到 ``~``，
        FileChooser 内部 ``listdir("~")`` 抛 OSError 被吞掉后 ``files[:] = []`` ——
@@ -10,21 +10,27 @@
        右对齐的边距永远对不上。
     3. 手机用户的心智是"从相册挑一张"，不是"浏览文件系统"。
 
-本模块的做法：
-    * 「从相册选择」（Android）：走系统相册 ``Intent.ACTION_GET_CONTENT``，
-      用 ContentResolver 把选中的图复制进应用私有目录 —— 不需要任何存储权限，最稳。
-    * 目录列表：扫描真实存在的相册目录（Pictures / DCIM / Download / 当前背景图所在目录 /
-      应用私有目录…），缩略图 + 文件名 + 大小（大小右对齐到自己的列宽）。
+本模块的做法（v1.0.3 起）：
+    * 「全部图片」（默认视图）：像系统「所有照片」那样**枚举手机里所有图片**：
+        - Android：先查 MediaStore（系统相册索引，覆盖所有已收录图片与所有格式），
+          再对存储卡根目录做**递归扫描**（覆盖 Downloads / 微信 / QQ / 各 App 自建目录
+          这类 MediaStore 之外或未及时入库的文件），两条来源按绝对路径去重合并。
+        - 桌面：递归扫描 图片 / 桌面 / 下载 / OneDrive 等目录 + 传入的额外目录。
+      MediaStore 里拿不到可读文件路径的条目（Android 10+ 少见但存在）保留 content://
+      URI，缩略图走 ContentResolver，选中时再复制进应用私有目录。
+    * 格式白名单（IMAGE_EXTS）扩到 jpg/jpeg/jpe/jfif/png/webp/bmp/gif/tif/tiff/heic/heif/ico/avif。
+    * 「文件夹」视图：仍可逐级进目录挑（缩略图 + 文件名 + 大小右对齐）。
+    * 列表分页（每页 PAGE 张）+ 缩略图分批生成（clock 驱动）：几千张图也不会把界面卡死。
     * 空态：写清"哪个位置没有图片、接下来点哪里"，绝不再是一片空白。
-    * 排列顺序：图片在前、子文件夹在后；点文件夹进入，点图片选中，确定后回填。
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
+import time
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from kivy.clock import Clock
 from kivy.graphics import Color, RoundedRectangle
@@ -44,14 +50,29 @@ from tt_views import Ctx, _label
 
 IS_ANDROID = platform == "android"
 
-IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
+# 常见图片格式（含手机相册里常见的 HEIC / JFIF；MediaStore 侧按 mime image/* 判定）
+IMAGE_EXTS = (".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".webp", ".bmp", ".gif",
+              ".tif", ".tiff", ".heic", ".heif", ".ico", ".avif")
+
 ROW_H = 56.0            # 列表行高（设计单位）
 BAR_H = 38.0            # 工具条/按钮高度
-LIST_CAP = 40           # 列表最多显示多少张图片
+PAGE = 80               # 每页渲染多少张图片（点「显示更多」再翻一页）
+DIR_CAP = 200           # 文件夹视图里子文件夹最多显示多少行
 THUMB_PX = 96           # 缩略图边长（像素）
-THUMB_BUDGET = 24       # 单次刷新最多现场生成多少张缩略图（防大相册卡住界面）
-SCAN_CAP = 4000         # 单目录扫描上限（防超大目录卡死）
+THUMB_FIRST = 24        # 一次渲染最多同步生成多少张缩略图（首屏要快）
+THUMB_BUDGET = 160      # 单次刷新的缩略图总预算
+THUMB_PER_TICK = 6      # 每个时钟周期补多少张缩略图
+SCAN_CAP = 6000         # 单目录列举上限（防超大目录卡死）
+SCAN_TOTAL = 4000       # 全部图片模式下最多收集多少张
+SCAN_BUDGET = 4.0       # 递归扫描时间预算（秒），超时先给出已有结果，界面不卡死
+MAX_DEPTH = 6           # 递归深度上限（防止 Android 深层目录无限下钻）
 REQ_GALLERY = 0x9A11    # startActivityForResult 请求码
+
+# 递归扫描时跳过的目录名（缓存 / 应用私有数据 / 代码目录，进去只会浪费预算）
+SKIP_DIR_NAMES = {
+    ".thumbnails", "thumbs", "cache", ".cache", "android", "obb", "node_modules",
+    ".git", ".svn", "logs", ".trash", "temp", "tmp", "$recycle.bin", "system volume information",
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -73,6 +94,29 @@ def human_size(num: Any) -> str:
             return f"{size:.1f} {unit}"
         size /= 1024.0
     return ""
+
+
+def item_key(item: Dict[str, Any]) -> str:
+    """同一条目的去重键：有真实文件路径用路径，否则用 content:// URI。"""
+    path = str(item.get("path") or "")
+    if path:
+        return "f:" + os.path.abspath(path).lower()
+    uri = str(item.get("uri") or "")
+    if uri:
+        return "u:" + uri
+    return ""
+
+
+def is_uri_item(item: Dict[str, Any]) -> bool:
+    """没有可读文件路径、只剩 content:// URI 的条目（Android 10+ 少量情况）。"""
+    return bool(item) and not str(item.get("path") or "") and bool(item.get("uri"))
+
+
+def make_item(path: str = "", uri: str = "", name: str = "", size: Any = 0,
+              mtime: Any = 0.0, source: str = "fs") -> Dict[str, Any]:
+    return {"path": str(path or ""), "uri": str(uri or ""),
+            "name": str(name or (os.path.basename(path) if path else "")),
+            "size": int(size or 0), "mtime": float(mtime or 0.0), "source": source}
 
 
 def candidate_dirs(current: str = "", extra: Optional[List[str]] = None) -> List[str]:
@@ -103,16 +147,51 @@ def candidate_dirs(current: str = "", extra: Optional[List[str]] = None) -> List
     if IS_ANDROID:
         for path in ("/storage/emulated/0/Pictures",
                      "/storage/emulated/0/Pictures/Screenshots",
+                     "/storage/emulated/0/Pictures/WeiXin",
                      "/storage/emulated/0/DCIM",
                      "/storage/emulated/0/DCIM/Camera",
+                     "/storage/emulated/0/DCIM/Screenshots",
                      "/storage/emulated/0/Download",
                      "/storage/emulated/0/Documents",
-                     "/storage/emulated/0/Pictures/WeiXin",
+                     "/storage/emulated/0/Movies",
+                     "/storage/emulated/0/Pictures/Screenshots",
                      "/storage/emulated/0/Android/media"):
             add(path)
     else:
         home = os.path.expanduser("~")
         for name in ("Pictures", "Pictures/Screenshots", "Desktop", "Downloads",
+                     "OneDrive/Pictures", "OneDrive/Desktop", "OneDrive/图片", "图片",
+                     "Documents"):
+            add(os.path.join(home, name))
+    add(store.data_dir())
+    return out
+
+
+def storage_roots(extra: Optional[List[str]] = None) -> List[str]:
+    """递归扫描的起点（Android 上是整张内置存储卡；桌面是常用几个目录）。"""
+    out: List[str] = []
+
+    def add(path: Any) -> None:
+        text = str(path or "").strip()
+        if not text or "~" in text:
+            return
+        try:
+            text = os.path.abspath(os.path.expanduser(text))
+        except Exception:
+            return
+        if os.path.isdir(text) and text not in out:
+            out.append(text)
+
+    for path in (extra or []):
+        add(path)
+    if IS_ANDROID:
+        for path in ("/storage/emulated/0", "/storage/emulated/0/DCIM",
+                     "/storage/emulated/0/Pictures", "/storage/emulated/0/Download",
+                     "/storage/emulated/0/Documents", "/storage/emulated/0/Movies"):
+            add(path)
+    else:
+        home = os.path.expanduser("~")
+        for name in ("Pictures", "Desktop", "Downloads", "Documents",
                      "OneDrive/Pictures", "OneDrive/Desktop", "OneDrive/图片", "图片"):
             add(os.path.join(home, name))
     add(store.data_dir())
@@ -132,12 +211,12 @@ def list_dir(path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
                     if entry.name.startswith("."):
                         continue
                     if entry.is_dir():
-                        subdirs.append({"path": entry.path, "name": entry.name,
-                                        "isdir": True, "size": 0, "mtime": 0.0})
+                        subdirs.append(make_item(path=entry.path, name=entry.name,
+                                                 source="dir") | {"isdir": True})
                     elif entry.is_file(follow_symlinks=False) and is_image(entry.name):
                         stat = entry.stat()
-                        images.append({"path": entry.path, "name": entry.name, "isdir": False,
-                                       "size": int(stat.st_size), "mtime": float(stat.st_mtime)})
+                        images.append(make_item(path=entry.path, name=entry.name,
+                                                size=stat.st_size, mtime=stat.st_mtime))
                 except OSError:
                     continue
     except OSError as exc:
@@ -147,8 +226,49 @@ def list_dir(path: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     return subdirs, images
 
 
+def walk_images(roots: List[str], limit: int = SCAN_TOTAL,
+                deadline: Optional[float] = None, max_depth: int = MAX_DEPTH
+                ) -> Iterator[Dict[str, Any]]:
+    """递归扫描目录树里的图片（生成器；跳过缓存/私有目录，带时间与深度上限）。"""
+    stack: List[Tuple[str, int]] = []
+    for root in roots or []:
+        if root and os.path.isdir(root):
+            stack.append((os.path.abspath(root), 0))
+    seen_dirs = set()
+    found = 0
+    while stack and found < limit:
+        if deadline is not None and time.time() > deadline:
+            return
+        folder, depth = stack.pop()
+        key = folder.lower()
+        if key in seen_dirs:
+            continue
+        seen_dirs.add(key)
+        try:
+            with os.scandir(folder) as it:
+                for index, entry in enumerate(it):
+                    if index >= SCAN_CAP or found >= limit:
+                        break
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            name = entry.name.lower()
+                            if name.startswith(".") or name in SKIP_DIR_NAMES:
+                                continue
+                            if depth + 1 <= max_depth:
+                                stack.append((entry.path, depth + 1))
+                        elif entry.is_file(follow_symlinks=False) and is_image(entry.name):
+                            stat = entry.stat()
+                            found += 1
+                            yield make_item(path=entry.path, name=entry.name,
+                                            size=stat.st_size, mtime=stat.st_mtime)
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+
+
 def scan_images(dirs: List[str], extra: Optional[List[str]] = None,
-                limit: int = LIST_CAP) -> List[Dict[str, Any]]:
+                limit: int = PAGE) -> List[Dict[str, Any]]:
     """把多个目录里的图片汇总成一份列表（按修改时间新→旧，路径去重）。"""
     out: List[Dict[str, Any]] = []
     seen = set()
@@ -157,13 +277,133 @@ def scan_images(dirs: List[str], extra: Optional[List[str]] = None,
             continue
         _, images = list_dir(folder)
         for item in images:
-            key = os.path.abspath(item["path"]).lower()
-            if key in seen:
+            key = item_key(item)
+            if not key or key in seen:
                 continue
             seen.add(key)
             out.append(item)
     out.sort(key=lambda item: item["mtime"], reverse=True)
     return out[:max(1, int(limit))]
+
+
+# --------------------------------------------------------------------------- #
+# Android MediaStore（系统相册索引：手机里"所有照片"的正源）
+# --------------------------------------------------------------------------- #
+def media_store_query_supported() -> bool:
+    if not IS_ANDROID:
+        return False
+    try:
+        import jnius  # noqa: F401
+        from android import mActivity  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def media_store_items(limit: int = SCAN_TOTAL) -> List[Dict[str, Any]]:
+    """查 MediaStore 图片表，返回手机里所有已收录图片（含非相册目录里的）。
+
+    有可读文件路径的走 ``path``（缩略图直接交给 Pillow，最快）；拿不到路径的保留
+    ``uri``（缩略图走 ContentResolver，选中时复制到应用私有目录）。任何异常都只
+    记日志并返回已拿到的部分，绝不让选择器崩掉。
+    """
+    if not media_store_query_supported():
+        return []
+    out: List[Dict[str, Any]] = []
+    try:
+        from jnius import autoclass, jarray
+        from android import mActivity
+        resolver = mActivity.getContentResolver()
+        MediaStore = autoclass("android.provider.MediaStore$Images$Media")
+        uri = MediaStore.EXTERNAL_CONTENT_URI
+        projection = jarray("java.lang.String")(
+            ["_id", "_data", "_display_name", "_size", "date_modified", "mime_type"])
+        cursor = resolver.query(uri, projection, None, None, "date_modified DESC")
+        if cursor is None:
+            return []
+        try:
+            idx_id = cursor.getColumnIndex("_id")
+            idx_data = cursor.getColumnIndex("_data")
+            idx_name = cursor.getColumnIndex("_display_name")
+            idx_size = cursor.getColumnIndex("_size")
+            idx_mtime = cursor.getColumnIndex("date_modified")
+            idx_mime = cursor.getColumnIndex("mime_type")
+            ContentUris = autoclass("android.content.ContentUris")
+            while cursor.moveToNext() and len(out) < limit:
+                mime = str(cursor.getString(idx_mime) or "") if idx_mime >= 0 else ""
+                if mime and not mime.startswith("image/"):
+                    continue
+                data = str(cursor.getString(idx_data) or "") if idx_data >= 0 else ""
+                name = str(cursor.getString(idx_name) or "") if idx_name >= 0 else ""
+                size = int(cursor.getLong(idx_size) or 0) if idx_size >= 0 else 0
+                mtime = float(cursor.getLong(idx_mtime) or 0) / 1000.0 if idx_mtime >= 0 else 0.0
+                readable = bool(data) and os.path.isfile(data)
+                image_uri = ""
+                if not readable and idx_id >= 0:
+                    row_id = int(cursor.getLong(idx_id) or 0)
+                    image_uri = str(ContentUris.withAppendedId(uri, row_id))
+                if not readable and not image_uri:
+                    continue
+                out.append(make_item(path=data if readable else "", uri=image_uri,
+                                     name=name or (os.path.basename(data) if data else ""),
+                                     size=size, mtime=mtime, source="media"))
+        finally:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+    except Exception as exc:
+        Logger.warning(f"tt_bgpick: 读取系统相册索引失败（{exc}）")
+    return out
+
+
+def scan_all_images(roots: Optional[List[str]] = None, current: str = "",
+                    extra: Optional[List[str]] = None, limit: int = SCAN_TOTAL,
+                    budget: float = SCAN_BUDGET) -> List[Dict[str, Any]]:
+    """枚举"手机里所有图片"：MediaStore + 候选目录直属列举 + 递归扫描，去重合并。
+
+    返回按修改时间新→旧排序的条目；每条含 path / uri / name / size / mtime / source。
+    """
+    deadline = time.time() + max(0.5, float(budget or SCAN_BUDGET))
+    scan_roots = list(roots) if roots is not None else storage_roots(extra)
+    for folder in candidate_dirs(current, extra):        # 已知相册目录优先，保证首屏有图
+        if folder not in scan_roots:
+            scan_roots.insert(0, folder)
+
+    out: List[Dict[str, Any]] = []
+    seen = set()
+
+    def push(item: Dict[str, Any]) -> None:
+        key = item_key(item)
+        if not key or key in seen or len(out) >= limit:
+            return
+        seen.add(key)
+        out.append(item)
+
+    for item in media_store_items(limit):                # ① 系统相册索引（最全）
+        push(item)
+    for folder in scan_roots:                            # ② 目录直属列举（含未入库新图）
+        if not os.path.isdir(folder):
+            continue
+        _, images = list_dir(folder)
+        for item in images:
+            push(item)
+    for item in walk_images(scan_roots, limit=limit, deadline=deadline):   # ③ 递归
+        push(item)
+    out.sort(key=lambda item: item["mtime"], reverse=True)
+    return out[:limit]
+
+
+def ext_summary(items: List[Dict[str, Any]], cap: int = 6) -> List[str]:
+    """列表里出现过的图片后缀（新→旧前 N 个），用来向主人证明"格式都认"。"""
+    exts: List[str] = []
+    for item in items:
+        ext = os.path.splitext(str(item.get("name") or item.get("path") or ""))[1].lower()
+        if ext and ext not in exts:
+            exts.append(ext)
+        if len(exts) >= cap:
+            break
+    return exts
 
 
 # --------------------------------------------------------------------------- #
@@ -181,7 +421,7 @@ def _thumb_dir() -> str:
 def thumb_for(path: str, size: int = THUMB_PX) -> str:
     """生成/复用缩略图；任何异常都只回 ""，绝不因为一张坏图影响整个选择器。"""
     folder = _thumb_dir()
-    if not folder or not os.path.isfile(path):
+    if not folder or not path or not os.path.isfile(path):
         return ""
     try:
         from PIL import Image as PILImage
@@ -203,6 +443,65 @@ def thumb_for(path: str, size: int = THUMB_PX) -> str:
     except Exception as exc:
         Logger.warning(f"tt_bgpick: 缩略图生成失败 {os.path.basename(path)}（{exc}）")
         return ""
+
+
+def thumb_for_uri(uri: str, size: int = THUMB_PX) -> str:
+    """content:// 条目的缩略图：BitmapFactory 按 inSampleSize 解码后压成 PNG 缓存。"""
+    folder = _thumb_dir()
+    if not folder or not uri or not IS_ANDROID:
+        return ""
+    try:
+        from jnius import autoclass
+        from android import mActivity
+        key = hashlib.md5(f"{uri}|{size}".encode("utf-8")).hexdigest()[:16]
+        out = os.path.join(folder, key + ".png")
+        if os.path.isfile(out) and os.path.getsize(out) > 0:
+            return out
+        BitmapFactory = autoclass("android.graphics.BitmapFactory")
+        Options = autoclass("android.graphics.BitmapFactory$Options")
+        opts = Options()
+        opts.inSampleSize = 8
+        resolver = mActivity.getContentResolver()
+        stream = resolver.openInputStream(autoclass("android.net.Uri").parse(uri))
+        if stream is None:
+            return ""
+        try:
+            bitmap = BitmapFactory.decodeStream(stream, None, opts)
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                pass
+        if bitmap is None:
+            return ""
+        FileOutputStream = autoclass("java.io.FileOutputStream")
+        fmt = autoclass("android.graphics.Bitmap$CompressFormat").PNG
+        handle = FileOutputStream(out)
+        ok = False
+        try:
+            ok = bool(bitmap.compress(fmt, 100, handle))
+        finally:
+            try:
+                handle.flush()
+                handle.close()
+                bitmap.recycle()
+            except Exception:
+                pass
+        return out if ok and os.path.isfile(out) and os.path.getsize(out) > 0 else ""
+    except Exception as exc:
+        Logger.warning(f"tt_bgpick: 相册缩略图失败（{exc}）")
+        return ""
+
+
+def thumb_for_item(item: Dict[str, Any], size: int = THUMB_PX) -> str:
+    """按条目类型取缩略图：有文件走 Pillow，只有 URI 走 ContentResolver。"""
+    path = str(item.get("path") or "")
+    if path and os.path.isfile(path):
+        return thumb_for(path, size)
+    uri = str(item.get("uri") or "")
+    if uri:
+        return thumb_for_uri(uri, size)
+    return ""
 
 
 # --------------------------------------------------------------------------- #
@@ -258,15 +557,32 @@ def _sniff_ext(path: str) -> str:
 
 
 def copy_uri_to_private(uri: Any) -> str:
-    """把相册返回的 content:// 图片复制进应用私有目录，返回落盘路径（失败返回 ""）。"""
+    """把相册/索引返回的 content:// 图片复制进应用私有目录，返回落盘路径（失败回 ""）。"""
     from jnius import autoclass, jarray
     from android import mActivity
+    if isinstance(uri, str):
+        uri = autoclass("android.net.Uri").parse(uri)
     resolver = mActivity.getContentResolver()
     stream = resolver.openInputStream(uri)
     if stream is None:
         return ""
+    ext = ".jpg"
+    try:
+        mime = str(resolver.getType(uri) or "")
+        if "png" in mime:
+            ext = ".png"
+        elif "webp" in mime:
+            ext = ".webp"
+        elif "gif" in mime:
+            ext = ".gif"
+        elif "bmp" in mime:
+            ext = ".bmp"
+        elif "hei" in mime or "avif" in mime:
+            ext = ".heic"
+    except Exception:
+        pass
     dest = os.path.join(store.data_dir(),
-                        f"bg_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+                        f"bg_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}")
     FileOutputStream = autoclass("java.io.FileOutputStream")
     out = FileOutputStream(dest)
     buffer = jarray("b")([0] * 65536)
@@ -293,7 +609,7 @@ def copy_uri_to_private(uri: Any) -> str:
     except OSError:
         return ""
     real_ext = _sniff_ext(dest)
-    if real_ext and real_ext != ".jpg":
+    if real_ext and real_ext != ext:
         renamed = os.path.splitext(dest)[0] + real_ext
         try:
             os.replace(dest, renamed)
@@ -301,6 +617,21 @@ def copy_uri_to_private(uri: Any) -> str:
         except OSError:
             pass
     return dest
+
+
+def export_item(item: Dict[str, Any]) -> str:
+    """把选中的条目落成一个可读文件路径（URI 条目先复制进私有目录）。"""
+    path = str(item.get("path") or "")
+    if path and os.path.isfile(path):
+        return path
+    uri = str(item.get("uri") or "")
+    if uri and IS_ANDROID:
+        try:
+            return copy_uri_to_private(uri)
+        except Exception as exc:
+            Logger.warning(f"tt_bgpick: 复制相册图片失败（{exc}）")
+            return ""
+    return ""
 
 
 def pick_from_gallery(callback: Callable[[str, str], None]) -> bool:
@@ -362,6 +693,7 @@ class _IconBox(Widget):
     def __init__(self, text: str, ctx: Ctx, size: float = ROW_H - 16,
                  color: str = THEME["panel3"], fg: str = "sub", **kwargs):
         super().__init__(size_hint=(None, None), size=(u(size), u(size)), **kwargs)
+        self.kind = "icon"
         with self.canvas:
             Color(*rgba(color))
             self._rect = RoundedRectangle(radius=[u(6)], pos=self.pos, size=self.size)
@@ -388,19 +720,19 @@ class _PickRow(ButtonBehavior, BoxLayout):
 
 
 class _ImageRow(_PickRow):
-    """图片行：缩略图 + 文件名（左）+ 大小（右对齐到自己的列宽）。"""
+    """图片行：缩略图 + 文件名（左）+ 大小（右对齐到自己的列宽）。
+
+    缩略图分批生成：先摆占位块，随后由 ``set_thumb`` 换成真图（几千张图也不卡首屏）。
+    """
 
     def __init__(self, item: Dict[str, Any], ctx: Ctx,
                  on_pick: Callable[[Dict[str, Any]], None], thumb: str, **kwargs):
         super().__init__(**kwargs)
         self.item = item
-        if thumb:
-            self.add_widget(Image(source=thumb, nocache=True, size_hint=(None, None),
-                                  size=(u(ROW_H - 16), u(ROW_H - 16)),
-                                  allow_stretch=True, keep_ratio=True))
-        else:
-            ext = os.path.splitext(str(item.get("name") or ""))[1].lstrip(".").upper()
-            self.add_widget(_IconBox((ext or "IMG")[:4], ctx))
+        self.ctx = ctx
+        self.has_thumb = bool(thumb)
+        self.head = self._make_head(thumb)
+        self.add_widget(self.head)
         name = _label(str(item.get("name") or ""), ctx, 11.5)
         name.shorten = True
         name.shorten_from = "right"
@@ -412,6 +744,24 @@ class _ImageRow(_PickRow):
         size.width = u(64)
         self.add_widget(size)
         self.bind(on_release=lambda *_: on_pick(self.item))
+
+    def _make_head(self, thumb: str) -> Widget:
+        if thumb:
+            return Image(source=thumb, nocache=True, size_hint=(None, None),
+                         size=(u(ROW_H - 16), u(ROW_H - 16)),
+                         allow_stretch=True, keep_ratio=True)
+        ext = os.path.splitext(str(self.item.get("name") or ""))[1].lstrip(".").upper()
+        return _IconBox((ext or "IMG")[:4], self.ctx)
+
+    def set_thumb(self, thumb: str) -> bool:
+        """把占位块换成真缩略图；已有图或没有缩略图时返回 False。"""
+        if self.has_thumb or not thumb:
+            return False
+        self.remove_widget(self.head)
+        self.head = self._make_head(thumb)
+        self.add_widget(self.head, index=0)
+        self.has_thumb = True
+        return True
 
 
 class _DirRow(_PickRow):
@@ -434,30 +784,47 @@ class _DirRow(_PickRow):
         self.bind(on_release=lambda *_: on_enter(self.item))
 
 
+class _MoreRow(_PickRow):
+    """「显示更多」行：列表分页的入口（还有多少张没显示写在上面）。"""
+
+    def __init__(self, more: int, ctx: Ctx, cb: Callable[[], None], **kwargs):
+        super().__init__(**kwargs)
+        self.add_widget(_IconBox("+", ctx, color=THEME["accent_soft"], fg="accent"))
+        name = _label(f"显示更多（还有 {max(0, int(more))} 张未显示）", ctx, 11.5, "accent")
+        name.size_hint_x = 1
+        self.add_widget(name)
+        self.bind(on_release=lambda *_: cb())
+
+
 class BackgroundPickerDialog:
     """背景图选择器（设置页「选择」按钮唤起）。
 
-    ``dir`` 为空字符串表示"相册汇总"（所有候选目录的图片合并，新的在前）；
-    否则只列该目录下的图片与子文件夹。
+    ``dir`` 为空字符串表示「全部图片」视图（手机里所有图片，新的在前，分页显示）；
+    否则只列该目录下的图片与子文件夹（点文件夹可逐级进入）。
     """
 
     def __init__(self, ctx: Ctx, current: str = "",
                  on_pick: Optional[Callable[[str], None]] = None,
                  on_close: Optional[Callable[[], None]] = None,
-                 extra_dirs: Optional[List[str]] = None):
+                 extra_dirs: Optional[List[str]] = None,
+                 scan_roots: Optional[List[str]] = None):
         self.ctx = ctx
         self.current = str(current or "")
         self.on_pick_cb = on_pick
         self.on_close_cb = on_close
         self.extra_dirs = [str(d) for d in (extra_dirs or []) if str(d or "").strip()]
+        self.extra_roots = [str(d) for d in (scan_roots or []) if str(d or "").strip()]
         self.dir = ""
         self.items: List[Dict[str, Any]] = []
         self.subdirs: List[Dict[str, Any]] = []
         self.rows = 0
+        self.shown = 0                  # 当前渲染了多少张图片（分页游标）
         self.selected = ""
         self.picked = ""
         self.thumbs = 0
-        self._img_rows: List[Any] = []
+        self._img_rows: List[_ImageRow] = []
+        self._pending: List[_ImageRow] = []
+        self._pump_event: Any = None
         self._thumb_budget = THUMB_BUDGET
         self._build()
 
@@ -485,7 +852,9 @@ class BackgroundPickerDialog:
         if gallery_supported():
             self.gallery_btn = _btn("从相册选择", ctx, self._pick_gallery, 96)
             bar.add_widget(self.gallery_btn)
-        bar.add_widget(_btn("相册汇总", ctx, self._show_all, 76))
+        self.all_btn = _btn("全部图片", ctx, self._show_all, 76)
+        bar.add_widget(self.all_btn)
+        bar.add_widget(_btn("文件夹", ctx, self._browse_dirs, 62))
         bar.add_widget(_btn("刷新", ctx, self.refresh, 52))
         bar.add_widget(Widget())
         box.add_widget(bar)
@@ -535,6 +904,7 @@ class BackgroundPickerDialog:
         request_media_permissions(lambda *_: Clock.schedule_once(lambda *_: self.refresh(), 0))
 
     def dismiss(self) -> None:
+        self._stop_pump()
         try:
             self.popup.dismiss()
         except Exception:
@@ -543,6 +913,10 @@ class BackgroundPickerDialog:
             self.on_close_cb()
 
     # ------------------------------------------------------------------ #
+    def scan_roots(self) -> List[str]:
+        """「全部图片」视图的递归扫描起点（额外目录排最前，便于自检/指定目录）。"""
+        return storage_roots(self.extra_dirs + self.extra_roots)
+
     def refresh(self) -> None:
         """重新扫描并渲染列表（可在自检里直接调用）。"""
         self._thumb_budget = THUMB_BUDGET
@@ -550,43 +924,112 @@ class BackgroundPickerDialog:
             self.subdirs, self.items = list_dir(self.dir)
         else:
             self.subdirs = []
-            self.items = scan_images(candidate_dirs(self.current, self.extra_dirs))
+            self.items = scan_all_images(self.scan_roots(), current=self.current,
+                                         extra=self.extra_dirs)
+        self.shown = min(len(self.items), PAGE)
         self._render()
         self._update_labels()
 
     def _render(self) -> None:
+        self._stop_pump()
         self.list_box.clear_widgets()
         self._img_rows = []
+        self._pending = []
         self.rows = 0
-        for item in self.items[:LIST_CAP]:
+        for item in self.items[:self.shown]:
             row = _ImageRow(item, self.ctx, self._pick, self._thumb_for(item))
             row.set_selected(bool(self.selected)
-                             and os.path.abspath(str(item["path"])) == os.path.abspath(self.selected))
+                             and self._is_selected(item))
             self.list_box.add_widget(row)
             self._img_rows.append(row)
+            if not row.has_thumb:
+                self._pending.append(row)
             self.rows += 1
-        for item in self.subdirs[:LIST_CAP]:
+        for item in self.subdirs[:DIR_CAP]:
             self.list_box.add_widget(_DirRow(item, self.ctx, self._enter))
             self.rows += 1
+        if len(self.items) > self.shown:
+            self.list_box.add_widget(_MoreRow(len(self.items) - self.shown, self.ctx,
+                                              self.show_more))
+            self.rows += 1
+        if self._pending:
+            self._pump_event = Clock.schedule_interval(self._pump_thumbs, 0.05)
+
+    def show_more(self) -> int:
+        """翻下一页（+PAGE 张）；返回当前渲染的张数。"""
+        self.shown = min(len(self.items), self.shown + PAGE)
+        self._render()
+        self._update_labels()
+        return self.shown
+
+    def _stop_pump(self) -> None:
+        if self._pump_event is not None:
+            try:
+                self._pump_event.cancel()
+            except Exception:
+                pass
+            self._pump_event = None
+
+    def _pump_thumbs(self, _dt: float = 0.0) -> bool:
+        """每个时钟周期补几张缩略图；补完自动停表。"""
+        done = 0
+        while self._pending and done < THUMB_PER_TICK and self._thumb_budget > 0:
+            row = self._pending.pop(0)
+            self._thumb_budget -= 1
+            if row.set_thumb(thumb_for_item(row.item)):
+                self.thumbs += 1
+            done += 1
+        if not self._pending or self._thumb_budget <= 0:
+            self._pending = []
+            self._pump_event = None
+            return False
+        return True
+
+    def fill_thumbs_sync(self, max_rows: int = THUMB_FIRST) -> int:
+        """同步补若干张缩略图（自检用，省去等时钟）。返回补成功的张数。"""
+        filled = 0
+        guard = 0
+        while self._pending and filled < max_rows and guard < max_rows * 4:
+            guard += 1
+            row = self._pending.pop(0)
+            if row.set_thumb(thumb_for_item(row.item)):
+                self.thumbs += 1
+                filled += 1
+        return filled
 
     def _thumb_for(self, item: Dict[str, Any]) -> str:
         if self._thumb_budget <= 0:
             return ""
         self._thumb_budget -= 1
-        path = thumb_for(str(item.get("path") or ""))
+        path = thumb_for_item(item)
         if path:
             self.thumbs += 1
         return path
+
+    def _is_selected(self, item: Dict[str, Any]) -> bool:
+        if not self.selected:
+            return False
+        target = str(item.get("path") or item.get("uri") or "")
+        if not target:
+            return False
+        if str(item.get("path") or ""):
+            return os.path.abspath(str(item["path"])) == os.path.abspath(self.selected)
+        return str(item.get("uri") or "") == self.selected
 
     def _update_labels(self) -> None:
         if self.dir:
             where = self.dir
         else:
-            where = f"相册汇总（{len(candidate_dirs(self.current, self.extra_dirs))} 个目录）"
+            where = f"全部图片（扫描 {len(self.scan_roots())} 个位置）"
         self.dir_label.text = f"位置：{where}"
         parts = []
         if self.items:
-            parts.append(f"{len(self.items)} 张图片")
+            parts.append(f"共 {len(self.items)} 张图片")
+            if len(self.items) > self.shown:
+                parts.append(f"已显示 {self.shown} 张")
+            exts = ext_summary(self.items)
+            if exts:
+                parts.append("格式 " + "/".join(e.lstrip(".") for e in exts))
         if self.subdirs:
             parts.append(f"{len(self.subdirs)} 个子文件夹")
         if parts:
@@ -599,9 +1042,9 @@ class BackgroundPickerDialog:
 
     # ------------------------------------------------------------------ #
     def _pick(self, item: Dict[str, Any]) -> None:
-        self.selected = str(item.get("path") or "")
+        self.selected = str(item.get("path") or item.get("uri") or "")
         for row in self._img_rows:
-            row.set_selected(os.path.abspath(str(row.item["path"])) == os.path.abspath(self.selected))
+            row.set_selected(self._is_selected(row.item))
         self._update_labels()
 
     def _enter(self, item: Dict[str, Any]) -> None:
@@ -611,6 +1054,13 @@ class BackgroundPickerDialog:
 
     def _show_all(self) -> None:
         self.dir = ""
+        self.refresh()
+
+    def _browse_dirs(self) -> None:
+        """切到文件夹视图：从当前背景图所在目录（或第一个候选目录）开始逐级挑。"""
+        folders = candidate_dirs(self.current, self.extra_dirs + self.extra_roots)
+        self.dir = folders[0] if folders else ""
+        self.selected = ""
         self.refresh()
 
     def _go_up(self) -> None:
@@ -626,6 +1076,14 @@ class BackgroundPickerDialog:
         if not target:
             self.hint.text = "请先点一张图片选中，再点「确定」"
             return
+        if target.startswith("content://"):        # URI 条目：先复制进私有目录
+            for item in self.items:
+                if str(item.get("uri") or "") == target:
+                    target = export_item(item) or ""
+                    break
+            if not target:
+                self.hint.text = "这张图片读不出来，换一张试试"
+                return
         self.picked = target
         if self.on_pick_cb is not None:
             self.on_pick_cb(target)
@@ -655,13 +1113,17 @@ class BackgroundPickerDialog:
 
     # ------------------------------------------------------------------ #
     def described(self) -> Dict[str, Any]:
-        """自检用：当前选择器状态（列表条数、命中路径、空态文案等）。"""
-        return {"dir": self.dir or "(汇总)", "rows": self.rows,
-                "images": len(self.items), "dirs": len(self.subdirs),
-                "thumbs": self.thumbs, "selected": self.selected,
-                "picked": self.picked,
-                "paths": [str(item.get("path") or "") for item in self.items],
+        """自检用：当前选择器状态（列表条数、命中路径、格式覆盖、分页等）。"""
+        return {"dir": self.dir or "(全部图片)", "rows": self.rows,
+                "images": len(self.items), "shown": self.shown, "page": PAGE,
+                "more": max(0, len(self.items) - self.shown),
+                "dirs": len(self.subdirs),
+                "thumbs": self.thumbs, "pending_thumbs": len(self._pending),
+                "selected": self.selected, "picked": self.picked,
+                "paths": [str(item.get("path") or item.get("uri") or "") for item in self.items],
+                "formats": ext_summary(self.items),
                 "candidates": candidate_dirs(self.current, self.extra_dirs),
+                "roots": self.scan_roots(),
                 "hint": self.hint.text,
                 "gallery_button": bool(self.gallery_btn),
                 "popup_open": bool(self.popup._window is not None)}

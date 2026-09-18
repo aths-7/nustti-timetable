@@ -13,16 +13,18 @@ import threading
 from typing import Any, Callable, Dict, List, Optional
 
 from kivy.clock import Clock
+from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.dropdown import DropDown
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.slider import Slider
-from kivy.uix.spinner import Spinner
+from kivy.uix.spinner import Spinner, SpinnerOption
 from kivy.uix.switch import Switch
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
@@ -30,6 +32,7 @@ from kivy.uix.widget import Widget
 import store
 import tt_bg
 import tt_bgpick
+import tt_datepick
 import tt_model
 import tt_theme
 from tt_theme import (THEME, PRESET_FONT_COLORS, available_families, is_hex_color, rgba, u,
@@ -52,6 +55,66 @@ SEC_H = 40.0          # 分组标题占高（文字贴底，把上下两组明�
 LABEL_W = 92.0        # 左侧标签列宽
 CTRL_H = 38.0         # 输入框 / 下拉框 / 按钮高度
 HINT_H = 20.0         # 小字说明占高（固定高度，避免挤掉行距）
+
+# 字体族下拉列表（P2：原 v1.0.2 用 Kivy 默认 SpinnerOption，尺寸跟着设备 dp 走，
+# 在高分屏手机上选项文字挤成一团、几乎看不清）。这里把列表项字号/行高都纳入 u() 体系。
+FAMILY_OPT_FS = 14.0  # 下拉选项字号（设计单位，约为主控件 11.5 的 1.2 倍）
+FAMILY_OPT_H = 46.0   # 下拉选项行高（≥ 字号的 3 倍，避免多行重叠）
+FAMILY_DD_MAX = 340.0  # 下拉列表最大高度（超出即可滚动，不遮住整屏）
+
+
+class _FontDropDown(DropDown):
+    """字体族下拉容器：浅色底 + 限高可滚动（原来顶满整屏、把设置页压成一片深色）。"""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("max_height", u(FAMILY_DD_MAX))
+        super().__init__(**kwargs)
+
+    def open(self, widget):
+        """展开后补一次重算。
+
+        Kivy 的 ``_reposition`` 只按"展开这一刻"的控件尺寸算宽度，若设置页刚好还没走完
+        布局（控件还是默认 100px），下拉宽度就会被算成 0——整排选项在屏幕上等于空白。
+        真机上手指点开时布局通常已就位，这里仍补一次下一帧的重算兜底。
+        """
+        super().open(widget)
+        Clock.schedule_once(self._reposition_later, 0)
+
+    def _reposition_later(self, *_largs) -> None:
+        try:
+            self._reposition()
+        except Exception:
+            pass
+
+
+def font_option_cls(ctx: Ctx) -> type:
+    """生成绑定当前 ctx 的下拉项类。
+
+    Kivy 只会用 ``cls(text=value)`` 构造选项（见 Spinner._update_dropdown），
+    所以 ctx 必须闭包进来，不能当构造参数传。
+    """
+
+    class _FontOption(SpinnerOption):
+        """字体族下拉列表项：大字号 + 固定行高 + 左对齐（P2：展开后小字看不清）。"""
+
+        def __init__(self, **kwargs):
+            kwargs.pop("font_size", None)
+            super().__init__(**kwargs)
+            self.font_name = ctx.font
+            self.font_size = ctx.fs(FAMILY_OPT_FS)
+            self.size_hint_y = None
+            self.height = u(FAMILY_OPT_H)
+            self.halign = "left"
+            self.valign = "middle"
+            self.padding = [u(10), 0]
+            self.background_normal = ""
+            self.background_down = ""
+            self.background_color = rgba(THEME["panel3"])
+            self.color = ctx.text_color("text")
+            self.bind(size=lambda w, *_: setattr(
+                w, "text_size", (max(u(20), w.width - u(16)), None)))
+
+    return _FontOption
 
 
 def _row(label_text: str, ctx: Ctx, widget: Widget, label_w: float = LABEL_W) -> BoxLayout:
@@ -128,6 +191,8 @@ class SettingsOverlay(FloatLayout):
         self._bg_path = str(self.cfg.get("bg_image") or "")
         self.bg_picker = None       # 自研背景选择器实例（自检要读它的状态）
         self.bg_anchor = None       # 「自定义背景」一节的锚点（自检滚动截图用）
+        self.date_picker = None     # 自研日期选择器实例（自检要读它的状态）
+        self.family_options: List[Any] = []   # 字体族下拉项（自检量字号/行高）
         self._build()
 
     # ------------------------------------------------------------------ #
@@ -163,9 +228,17 @@ class SettingsOverlay(FloatLayout):
 
         # --- 课表 ---
         body.add_widget(_section("课表", ctx))
+        # P3：学期首日原来只能手敲（截图 3）。现在输入框旁边给一个「选择」按钮，
+        # 点开自研日历（tt_datepick）按格子点日期，回写右上角格式的文本便于查看与手改。
         self.term_text = _input(self.cfg.get("term_start", ""), ctx)
-        body.add_widget(_row("学期首日", ctx, self.term_text))
-        body.add_widget(_hint("格式 YYYY-MM-DD，即第 1 周星期一", ctx))
+        self.term_text.size_hint_x = 1
+        term_box = BoxLayout(orientation="horizontal", size_hint_y=None, height=u(CTRL_H),
+                             pos_hint={"center_y": 0.5}, spacing=u(6))
+        term_box.add_widget(self.term_text)
+        self.term_btn = _button("选择日期", ctx, self._pick_term_start, 74)
+        term_box.add_widget(self.term_btn)
+        body.add_widget(_row("学期首日", ctx, term_box))
+        body.add_widget(_hint("点「选择日期」按日历点选；也可直接输入 YYYY-MM-DD（第 1 周星期一）", ctx))
         self.weeks = self._slider_row(body, "总周数", ctx, 1, 30, 1,
                                       self.cfg.get("total_weeks", 20), "{:.0f} 周")
         self.term_label = _label(f"当前学期：{self.cfg.get('term') or '未设置'}   "
@@ -179,11 +252,15 @@ class SettingsOverlay(FloatLayout):
         families = available_families()
         current = str(self.cfg.get("font_family") or "")
         self.family = Spinner(text=current or families[0], values=families,
-                              font_name=ctx.font, font_size=ctx.fs(11.5),
+                              option_cls=font_option_cls(ctx), dropdown_cls=_FontDropDown,
+                              font_name=ctx.font, font_size=ctx.fs(12),
                               size_hint_y=None, height=u(CTRL_H),
                               pos_hint={"center_y": 0.5},
                               background_normal="", background_color=rgba(THEME["panel3"]))
         self.family.color = ctx.text_color("text")
+        # 自检要逐个量展开项的字号/行高（P2：展开后小字看不清）
+        self.family_options = list(getattr(self.family._dropdown, "container", None).children
+                                  if getattr(self.family, "_dropdown", None) is not None else [])
         body.add_widget(_row("字体族", ctx, self.family))
         self.scale = self._slider_row(body, "字号缩放", ctx, 0.8, 1.6, 0.05,
                                       self.cfg.get("font_scale", 1.0), "{:.2f} 倍")
@@ -282,6 +359,31 @@ class SettingsOverlay(FloatLayout):
         self.color_preview.text = "跟随主题" if not self._ink else self._ink
         self.color_preview.color = rgba(self._ink) if self._ink else rgba(THEME["text"])
 
+    # ------------------------------------------------------------------ #
+    # P3：学期首日 —— 点选式日历（原来只能手敲键盘）
+    # ------------------------------------------------------------------ #
+    def _pick_term_start(self) -> None:
+        """打开自研日历弹窗（tt_datepick），按格子点选学期首日。"""
+        old = self.date_picker                     # 连点两次会叠出两层弹窗，旧的那层再也关不掉
+        if old is not None:                        # → 开新的之前先把上一个收掉
+            try:
+                old.popup.dismiss(animation=False)
+            except Exception:
+                pass
+        self.date_picker = tt_datepick.DatePickerDialog(
+            self.ctx, value=self.term_text.text.strip(),
+            title="选择学期首日（第 1 周星期一）", on_pick=self._term_start_picked)
+        self.date_picker.open()
+
+    def _term_start_picked(self, value: str) -> None:
+        """选中日期回填输入框（统一成 YYYY-MM-DD），并顺手刷新「第 N 周」小字。"""
+        text = tt_datepick.normalize_date(value) or str(value or "").strip()
+        self.term_text.text = text
+        cfg = dict(self.cfg)
+        cfg["term_start"] = text
+        self.term_label.text = (f"当前学期：{self.cfg.get('term') or '未设置'}   "
+                                f"第 {tt_model.current_week(cfg)} 周")
+
     def _choose_bg(self, extra_dirs=None) -> None:
         """打开自研背景选择器（替代手机端必然空列表的 FileChooserListView）。"""
         self.bg_picker = tt_bgpick.BackgroundPickerDialog(
@@ -348,7 +450,8 @@ class SettingsOverlay(FloatLayout):
         else:
             cfg["password"] = ""
         cfg["remember_password"] = bool(self.remember.active)
-        cfg["term_start"] = self.term_text.text.strip()
+        cfg["term_start"] = (tt_datepick.normalize_date(self.term_text.text)
+                             or self.term_text.text.strip())
         cfg["total_weeks"] = int(self.weeks.value)
         cfg["font_family"] = self.family.text
         cfg["font_scale"] = tt_theme.clamp_scale(self.scale.value)
