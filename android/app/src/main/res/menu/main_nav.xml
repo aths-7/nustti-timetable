@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_week"
+        android:icon="@android:drawable/ic_menu_my_calendar"
+        android:title="@string/nav_week" />
+
+    <item
+        android:id="@+id/nav_today"
+        android:icon="@android:drawable/ic_menu_today"
+        android:title="@string/nav_today" />
+
+    <item
+        android:id="@+id/nav_compact"
+        android:icon="@android:drawable/ic_menu_sort_by_size"
+        android:title="@string/nav_compact" />
+
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="@string/nav_settings" />
+</menu>

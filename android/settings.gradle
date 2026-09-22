@@ -1,0 +1,30 @@
+// 依赖仓库：优先走国内镜像（本机无法直连 dl.google.com），再回退官方仓库
+pluginManagement {
+    // 清空用户目录 ~/.gradle/gradle.properties 里那个不可用的代理配置（mirrors.dormforce.net:80，
+    // host 值里还带了 http:// 前缀），否则所有依赖解析都会失败
+    ['http.proxyHost', 'http.proxyPort', 'https.proxyHost', 'https.proxyPort', 'http.nonProxyHosts'].each {
+        System.clearProperty(it)
+    }
+
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "nustti-timetable"
+include ':app'

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  本机开发用网络策略：课表服务端常以 http 形式跑在电脑上（如 http://192.168.x.x:8080），
+  因此放行明文流量。生产环境请改为 https 并移除 cleartextTrafficPermitted。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

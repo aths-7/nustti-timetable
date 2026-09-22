@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'edu.nustti.timetable'
+    compileSdk 35
+    // 本机 SDK 只装了 35.0.1 / 36.0.0 / 37.0.0，显式指定，避免 AGP 默认去找 34.0.0
+    buildToolsVersion '35.0.1'
+
+    defaultConfig {
+        applicationId "edu.nustti.timetable"
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ""
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.viewpager2:viewpager2:1.1.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'com.google.code.gson:gson:2.11.0'
+}

@@ -1,28 +1,26 @@
-# ---- Python ----
-__pycache__/
-*.py[cod]
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# ---- buildozer / python-for-android 构建产物 ----
-.buildozer/
-bin/
-dist/
+# ---- Android / Gradle ----
+.gradle/
 build/
+local.properties
+*.iml
+.idea/
+.cxx/
+captures/
 *.apk
 *.aab
 *.idsig
-.idea/
+
+# ---- 签名密钥（严禁入库）----
+*.keystore
+*.jks
+
+# ---- Java / Maven 构建产物 ----
+target/
+*.war
+*.class
+
+# ---- 编辑器 / 系统 ----
 .vscode/
-
-# ---- 自检截图与临时产物（只用于本地验证，不入库）----
-screenshots/
-screenshots_temp/
-selfcheck_report.json
-
-# ---- 日志与系统垃圾 ----
 *.log
 *.tmp
 Thumbs.db
