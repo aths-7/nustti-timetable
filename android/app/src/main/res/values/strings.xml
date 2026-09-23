@@ -7,10 +7,8 @@
     <string name="nav_compact">紧凑</string>
     <string name="nav_settings">设置</string>
 
-    <string name="hint_server">服务端地址</string>
     <string name="hint_student_id">学号</string>
     <string name="hint_password">密码</string>
-    <string name="hint_captcha">验证码</string>
 
     <string name="action_login">登录并获取课表</string>
     <string name="action_demo">演示数据（免登录）</string>
@@ -18,6 +16,5 @@
     <string name="action_logout">退出登录</string>
     <string name="action_save">保存设置</string>
 
-    <string name="tip_captcha">验证码由教务系统下发，需人工填写（程序不识别、不绕过验证码）</string>
-    <string name="tip_server_emulator">模拟器填 http://10.0.2.2:8080；真机填电脑局域网地址，如 http://192.168.1.100:8080</string>
+    <string name="tip_jwgl">课表直连教务系统官网 jwgl.nustti.edu.cn，账号密码仅保存在本机</string>
 </resources>

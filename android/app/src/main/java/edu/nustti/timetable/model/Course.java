@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 课程数据模型，字段与服务端（及 Kivy 桌面版）完全一致。
+ * 课程数据模型，字段与 Kivy 桌面版完全一致。
  */
 public class Course {
 
@@ -18,6 +18,16 @@ public class Course {
     public String raw = "";
 
     public Course() {
+    }
+
+    public Course(String name, String teacher, String room, int weekday,
+                  List<Integer> sessions, List<Integer> weeks) {
+        this.name = name == null ? "" : name;
+        this.teacher = teacher == null ? "" : teacher;
+        this.room = room == null ? "" : room;
+        this.weekday = weekday;
+        this.sessions = sessions == null ? new ArrayList<Integer>() : sessions;
+        this.weeks = weeks == null ? new ArrayList<Integer>() : weeks;
     }
 
     public int startSession() {

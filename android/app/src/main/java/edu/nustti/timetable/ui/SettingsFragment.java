@@ -23,14 +23,13 @@ import java.util.List;
 import java.util.Locale;
 
 import edu.nustti.timetable.R;
-import edu.nustti.timetable.api.ApiClient;
 import edu.nustti.timetable.data.SessionStore;
+import edu.nustti.timetable.edu.JwglSession;
 import edu.nustti.timetable.model.TimetableResult;
 
-/** 设置页：服务端地址、账号与密码、当前周次、学期切换、缓存信息与接口清单。 */
+/** 设置页：账号、当前周次、学期切换、缓存信息与数据来源（课表直连教务系统官网）。 */
 public class SettingsFragment extends Fragment implements MainActivity.DataListener {
 
-    private TextInputEditText etBaseUrl;
     private TextInputEditText etStudentId;
     private EditText etWeek;
     private TextView tvWeekRange;
@@ -52,24 +51,21 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         final MainActivity main = (MainActivity) requireActivity();
         final SessionStore store = main.repository().store();
 
-        etBaseUrl = view.findViewById(R.id.etBaseUrl);
         etStudentId = view.findViewById(R.id.etStudentId);
         etWeek = view.findViewById(R.id.etWeek);
         tvWeekRange = view.findViewById(R.id.tvWeekRange);
         tvCacheInfo = view.findViewById(R.id.tvCacheInfo);
         spTerm = view.findViewById(R.id.spTerm);
 
-        etBaseUrl.setText(store.getBaseUrl());
         etStudentId.setText(store.getStudentId());
         etWeek.setText(String.valueOf(store.getCurrentWeek()));
 
         TextView tvApiList = view.findViewById(R.id.tvApiList);
-        tvApiList.setText("GET  /api/health —— 健康检查\n"
-                + "GET  /api/captcha —— 教务系统验证码图片\n"
-                + "POST /api/login —— 登录教务系统（body: studentId/password/captcha）\n"
-                + "GET  /api/timetable?term= —— 课表 JSON\n"
-                + "GET  /api/demo/timetable —— 演示课表（免登录）\n"
-                + "POST /api/logout —— 注销会话");
+        tvApiList.setText("数据来源：南京理工大学泰州科技学院教务系统官网\n"
+                + "地址：https://jwgl.nustti.edu.cn/jsxsd/\n"
+                + "登录：POST /jsxsd/xk/LoginToXk（学号 + 密码，无验证码）\n"
+                + "课表：GET /jsxsd/xskb/xskb_list.do?xnxq01id=学期\n"
+                + "说明：手机端直连官网，不经过任何中间服务端");
 
         Button btnSave = view.findViewById(R.id.btnSave);
         Button btnRefresh = view.findViewById(R.id.btnRefresh);
@@ -79,12 +75,6 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         btnSave.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String base = ApiClient.normalizeBase(text(etBaseUrl));
-                if (base.isEmpty()) {
-                    toast("服务端地址不能为空");
-                    return;
-                }
-                store.setBaseUrl(base);
                 store.setStudentId(text(etStudentId));
                 String weekText = text(etWeek);
                 int value = week;
@@ -157,9 +147,8 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         this.week = week;
 
         MainActivity main = (MainActivity) requireActivity();
-        String base = main.repository().store().getBaseUrl();
-        if (etBaseUrl.getText() == null || etBaseUrl.getText().toString().trim().isEmpty()) {
-            etBaseUrl.setText(base);
+        if (etStudentId.getText() == null || etStudentId.getText().toString().trim().isEmpty()) {
+            etStudentId.setText(main.repository().store().getStudentId());
         }
         if (etWeek.getText() == null || etWeek.getText().toString().trim().isEmpty()) {
             etWeek.setText(String.valueOf(week));
@@ -205,7 +194,14 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         String time = at <= 0 ? "无" : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
                 .format(new Date(at));
         String from = store.cacheFrom();
-        String fromText = "demo".equals(from) ? "演示数据" : ("server".equals(from) ? "教务系统" : "未知");
+        String fromText;
+        if ("demo".equals(from)) {
+            fromText = "演示数据";
+        } else if ("jwgl".equals(from) || "server".equals(from)) {
+            fromText = "教务系统官网";
+        } else {
+            fromText = "未知";
+        }
         int count = data == null ? 0 : data.courses.size();
         int max = data == null ? 0 : data.maxWeek();
         String term = store.getTermLabel().isEmpty() ? store.getTerm() : store.getTermLabel();
@@ -214,7 +210,7 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
                 + "课程数：" + count + " 门\n"
                 + "周次范围：1 - " + max + " 周\n"
                 + "当前学期：" + (term.isEmpty() ? "（未选择）" : term) + "\n"
-                + "服务端登录态：" + (ApiClient.hasSession() ? "已建立" : "未建立"));
+                + "教务系统登录态：" + (JwglSession.ready() ? "已登录" : "未登录（刷新时自动重新登录）"));
     }
 
     private String text(EditText editText) {

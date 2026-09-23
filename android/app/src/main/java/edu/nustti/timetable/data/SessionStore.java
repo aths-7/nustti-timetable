@@ -18,8 +18,8 @@ public class SessionStore {
     private static final String KEY_CACHE_AT = "timetableAt";
     private static final String KEY_CACHE_FROM = "timetableFrom";
 
-    /** 模拟器访问宿主机 localhost 的固定地址；真机需改成电脑局域网 IP。 */
-    public static final String DEFAULT_BASE = "http://10.0.2.2:8080";
+    /** 课表数据来源：南京理工大学泰州科技学院教务系统官网（客户端直连）。 */
+    public static final String DEFAULT_BASE = "https://jwgl.nustti.edu.cn";
 
     private final SharedPreferences prefs;
 

@@ -27,7 +27,7 @@ import edu.nustti.timetable.model.TimetableResult;
  *   <li>{@link #MODE_FULL}：整周课表，课程块显示课程名 / 教室 / 教师 / 周次</li>
  *   <li>{@link #MODE_COMPACT}：紧凑课表，课程块只显示课程名，字号与行高更小，一屏看更多</li>
  * </ul>
- * 表格结构（含 rowspan 合并单元格）由服务端解析好后以「星期 + 小节区间」形式下发。
+ * 表格结构（含 rowspan 合并单元格）由课表解析器解析后以「星期 + 小节区间」形式下发。
  */
 public class WeekGridView extends View {
 

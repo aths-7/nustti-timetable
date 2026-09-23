@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  本机开发用网络策略：课表服务端常以 http 形式跑在电脑上（如 http://192.168.x.x:8080），
-  因此放行明文流量。生产环境请改为 https 并移除 cleartextTrafficPermitted。
+  课表数据源为 https://jwgl.nustti.edu.cn（https，使用系统证书链校验）。
+  保留明文放行仅为便于局域网内自行调试，教务系统请求本身全程走 https。
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true">

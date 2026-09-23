@@ -23,28 +23,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="登录教务系统（服务端代抓，客户端只拿解析后的课表）"
+            android:text="登录教务系统官网，课表由手机端直接获取"
             android:textColor="@color/text_secondary"
             android:textSize="13sp" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:hint="@string/hint_server">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etBaseUrl"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textUri"
-                android:singleLine="true" />
-        </com.google.android.material.textfield.TextInputLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/tip_server_emulator"
+            android:layout_marginTop="20dp"
+            android:text="@string/tip_jwgl"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
@@ -75,47 +62,6 @@
                 android:inputType="textPassword"
                 android:singleLine="true" />
         </com.google.android.material.textfield.TextInputLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/hint_captcha">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etCaptcha"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="text"
-                    android:maxLength="8"
-                    android:singleLine="true" />
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <ImageView
-                android:id="@+id/ivCaptcha"
-                android:layout_width="120dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="10dp"
-                android:background="@color/grid_line"
-                android:contentDescription="验证码图片，点击可刷新"
-                android:padding="2dp"
-                android:scaleType="fitCenter" />
-        </LinearLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/tip_captcha"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
 
         <Button
             android:id="@+id/btnLogin"

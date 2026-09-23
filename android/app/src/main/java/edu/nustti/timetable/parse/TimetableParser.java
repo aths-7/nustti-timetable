@@ -2,7 +2,6 @@ package edu.nustti.timetable.parse;
 
 import edu.nustti.timetable.model.Course;
 import edu.nustti.timetable.model.SessionTimes;
-import edu.nustti.timetable.model.TermOption;
 import edu.nustti.timetable.model.TimetableResult;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -772,8 +771,8 @@ public final class TimetableParser {
     }
 
     /** 从课表页面解析可选学期列表 [(value, label)]。 */
-    public static List<TermOption> parseTerms(String html) {
-        List<TermOption> terms = new ArrayList<>();
+    public static List<TimetableResult.TermOption> parseTerms(String html) {
+        List<TimetableResult.TermOption> terms = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         if (html == null || html.isEmpty()) {
             return terms;
@@ -790,7 +789,7 @@ public final class TimetableParser {
                 if (!value.isEmpty() && !label.isEmpty() && !seen.contains(value)
                         && value.matches(".*\\d{4}.*")) {
                     seen.add(value);
-                    terms.add(new TermOption(value, label));
+                    terms.add(new TimetableResult.TermOption(value, label));
                 }
             }
         }
@@ -801,7 +800,7 @@ public final class TimetableParser {
                 if (!value.isEmpty() && !seen.contains(value)
                         && (value.matches("\\d{4}-\\d{4}-\\d") || value.matches(".*\\d{4}-\\d{4}.*"))) {
                     seen.add(value);
-                    terms.add(new TermOption(value, label));
+                    terms.add(new TimetableResult.TermOption(value, label));
                 }
             }
         }

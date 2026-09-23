@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 服务端 /api/timetable 的 data 字段结构。 */
+/** 课表结果结构：课程列表、可选学期列表与解析元信息。 */
 public class TimetableResult {
 
     public List<Course> courses = new ArrayList<>();
@@ -16,6 +16,14 @@ public class TimetableResult {
     public static class TermOption {
         public String value = "";
         public String label = "";
+
+        public TermOption() {
+        }
+
+        public TermOption(String value, String label) {
+            this.value = value == null ? "" : value;
+            this.label = label == null ? "" : label;
+        }
 
         @Override
         public String toString() {
@@ -32,6 +40,14 @@ public class TimetableResult {
         /** {"1": ["08:00","08:45"], ...} */
         public Map<String, List<String>> sessionTimes = new LinkedHashMap<>();
         public String error;
+
+        /** 解析失败时的元信息（课程列表为空，maxWeek 置 0）。 */
+        public static Meta error(String message) {
+            Meta meta = new Meta();
+            meta.error = message;
+            meta.maxWeek = 0;
+            return meta;
+        }
     }
 
     public int maxWeek() {

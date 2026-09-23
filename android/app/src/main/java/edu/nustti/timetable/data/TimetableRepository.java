@@ -4,10 +4,18 @@ import android.content.Context;
 
 import com.google.gson.Gson;
 
-import edu.nustti.timetable.api.ApiClient;
+import edu.nustti.timetable.edu.JwglClient;
+import edu.nustti.timetable.edu.JwglSession;
+import edu.nustti.timetable.edu.LoginException;
 import edu.nustti.timetable.model.TimetableResult;
+import edu.nustti.timetable.parse.DemoData;
 
-/** 课表数据仓库：负责从服务端拉取、写入本地缓存、读取缓存。 */
+/**
+ * 课表数据仓库：直接向南京理工大学泰州科技学院教务系统官网抓取课表、写入本地缓存、读取缓存。
+ *
+ * <p>客户端不再依赖任何中间服务端；登录会话保存在 {@link JwglSession}（进程内），
+ * App 重启后会用本地保存的学号 / 密码自动重新登录一次。</p>
+ */
 public class TimetableRepository {
 
     private static final Gson GSON = new Gson();
@@ -22,33 +30,44 @@ public class TimetableRepository {
         return store;
     }
 
-    /** 拉取正式课表（需已登录教务系统），成功后写入缓存。 */
-    public TimetableResult fetchFromServer() throws Exception {
-        ApiClient.Result result = ApiClient.timetable(store.getBaseUrl(), store.getTerm());
-        if (!result.ok) {
-            if (result.needLogin) {
-                throw new IllegalStateException("服务端会话已失效，请重新登录教务系统");
-            }
-            throw new IllegalStateException(result.message.isEmpty() ? "课表获取失败" : result.message);
+    /** 直连教务系统官网拉取课表；会话失效时用本地凭据自动重登一次。 */
+    public TimetableResult fetchFromJwgl() throws Exception {
+        JwglClient client = JwglSession.current();
+        if (client == null || !client.isLoggedIn()) {
+            client = loginJwgl();
         }
-        if (result.data == null) {
-            throw new IllegalStateException("课表数据为空");
+        TimetableResult data;
+        try {
+            data = client.fetchTimetable(store.getTerm());
+        } catch (LoginException e) {
+            client = loginJwgl();
+            data = client.fetchTimetable(store.getTerm());
         }
-        if (result.data.term != null && !result.data.term.isEmpty()) {
-            store.setTerm(result.data.term, result.data.term);
+        if (data.term != null && !data.term.isEmpty()) {
+            store.setTerm(data.term, termLabel(data));
         }
-        cache(result.data, "server");
-        return result.data;
+        cache(data, "jwgl");
+        return data;
     }
 
-    /** 加载演示课表（免登录，便于无教务账号时预览界面）。 */
-    public TimetableResult fetchDemo() throws Exception {
-        ApiClient.Result result = ApiClient.demo(store.getBaseUrl());
-        if (!result.ok || result.data == null) {
-            throw new IllegalStateException(result.message.isEmpty() ? "演示课表获取失败" : result.message);
+    /** 用本地保存的学号 / 密码登录教务系统官网，成功后把会话放入 {@link JwglSession}。 */
+    public JwglClient loginJwgl() throws Exception {
+        String studentId = store.getStudentId();
+        String password = store.getPassword();
+        if (studentId.isEmpty() || password.isEmpty()) {
+            throw new IllegalStateException("请先填写学号与密码");
         }
-        cache(result.data, "demo");
-        return result.data;
+        JwglClient client = new JwglClient(store.getBaseUrl());
+        client.login(studentId, password);
+        JwglSession.set(client);
+        return client;
+    }
+
+    /** 演示课表：本地生成，无需网络与登录。 */
+    public TimetableResult fetchDemo() throws Exception {
+        TimetableResult data = DemoData.build();
+        cache(data, "demo");
+        return data;
     }
 
     public void cache(TimetableResult data, String from) {
@@ -76,5 +95,17 @@ public class TimetableRepository {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 取学期展示名（学期列表里匹配不到时退回学期编号本身）。 */
+    private String termLabel(TimetableResult data) {
+        if (data.terms != null) {
+            for (TimetableResult.TermOption option : data.terms) {
+                if (option.value.equals(data.term)) {
+                    return option.label;
+                }
+            }
+        }
+        return data.term;
     }
 }

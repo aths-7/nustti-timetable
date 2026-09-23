@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * 演示课表（与桌面版 tt_model.demo_courses 完全一致）。
  *
- * <p>用途：Android 端在没有教务系统账号 / 不想联网时，也能验证「服务端 → 客户端 → 三种视图」整条链路。
+ * <p>用途：没有教务系统账号 / 不想联网时，也能验证「解析 → 客户端 → 三种视图」整条链路。
  * 其中最后两条是"重修 / 分班撞课"样本，用于验证同一格多门课的渲染与切换。</p>
  */
 public final class DemoData {
@@ -22,7 +22,7 @@ public final class DemoData {
     public static TimetableResult build() {
         TimetableResult result = new TimetableResult();
         result.term = "demo";
-        result.terms = new ArrayList<>(Arrays.asList(new edu.nustti.timetable.model.TermOption("demo", "演示数据")));
+        result.terms = new ArrayList<>(Arrays.asList(new TimetableResult.TermOption("demo", "演示数据")));
 
         result.courses.add(course("高等数学A", "王建国", "教1-101", 1, 1, 2, 1, 16));
         result.courses.add(course("大学英语(3)", "李梅", "外语楼-302", 1, 5, 6, 1, 12));

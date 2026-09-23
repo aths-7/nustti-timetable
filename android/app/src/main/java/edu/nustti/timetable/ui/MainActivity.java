@@ -20,13 +20,15 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import java.util.List;
 
 import edu.nustti.timetable.R;
-import edu.nustti.timetable.api.ApiClient;
 import edu.nustti.timetable.api.Async;
 import edu.nustti.timetable.data.TimetableRepository;
+import edu.nustti.timetable.edu.JwglSession;
 import edu.nustti.timetable.model.TimetableResult;
 
 /**
  * 主界面：底部四个页签（整周 / 今日 / 紧凑 / 设置），统一持有课表数据并向下分发。
+ *
+ * <p>课表由手机端直连教务系统官网获取，刷新失败的判断依据是教务系统返回的登录态与错误信息。</p>
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -173,11 +175,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void refresh(boolean demo) {
-        toast(demo ? "正在加载演示课表..." : "正在从教务系统刷新课表...");
+        toast(demo ? "正在加载演示课表..." : "正在直连教务系统官网刷新课表...");
         Async.run(new Async.Task<TimetableResult>() {
             @Override
             public TimetableResult run() throws Exception {
-                return demo ? repository.fetchDemo() : repository.fetchFromServer();
+                return demo ? repository.fetchDemo() : repository.fetchFromJwgl();
             }
         }, new Async.Done<TimetableResult>() {
             @Override
@@ -194,7 +196,8 @@ public class MainActivity extends AppCompatActivity {
             public void onError(Exception e) {
                 String msg = e == null || e.getMessage() == null ? "未知错误" : e.getMessage();
                 toast("刷新失败：" + msg);
-                if (msg.contains("重新登录")) {
+                if (msg.contains("请先填写学号与密码") || msg.contains("重新登录")
+                        || msg.contains("登录失败")) {
                     startActivity(new Intent(MainActivity.this, LoginActivity.class));
                     finish();
                     return;
@@ -213,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
     // ------------------------------------------------------------------ //
 
     private void showRefreshDialog() {
-        String[] items = {"从教务系统刷新（需已登录）", "加载演示课表"};
+        String[] items = {"从教务系统官网刷新（需已登录）", "加载演示课表"};
         new AlertDialog.Builder(this)
                 .setTitle(R.string.action_refresh)
                 .setItems(items, new DialogInterface.OnClickListener() {
@@ -228,7 +231,7 @@ public class MainActivity extends AppCompatActivity {
     public void confirmLogout() {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.action_logout)
-                .setMessage("将清除服务端登录会话与本地课表缓存，确定退出吗？")
+                .setMessage("将清除本地登录状态与课表缓存，确定退出吗？")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("退出", new DialogInterface.OnClickListener() {
                     @Override
@@ -240,31 +243,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void doLogout() {
-        final String base = repository.store().getBaseUrl();
-        Async.run(new Async.Task<ApiClient.Result>() {
-            @Override
-            public ApiClient.Result run() throws Exception {
-                return ApiClient.logout(base);
-            }
-        }, new Async.Done<ApiClient.Result>() {
-            @Override
-            public void onResult(ApiClient.Result result) {
-                ApiClient.clearSession();
-                repository.store().clearTimetable();
-                toast("已退出登录");
-                startActivity(new Intent(MainActivity.this, LoginActivity.class));
-                finish();
-            }
-        }, new Async.Fail() {
-            @Override
-            public void onError(Exception e) {
-                ApiClient.clearSession();
-                repository.store().clearTimetable();
-                toast("已退出登录（服务端会话清理失败：" + (e == null ? "" : e.getMessage()) + "）");
-                startActivity(new Intent(MainActivity.this, LoginActivity.class));
-                finish();
-            }
-        });
+        JwglSession.clear();
+        repository.store().clearTimetable();
+        toast("已退出登录");
+        startActivity(new Intent(MainActivity.this, LoginActivity.class));
+        finish();
     }
 
     private void toast(String text) {

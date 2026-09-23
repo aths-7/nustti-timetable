@@ -13,29 +13,16 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="服务端"
+            android:text="教务系统"
             android:textColor="@color/brand"
             android:textSize="16sp"
             android:textStyle="bold" />
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="@string/hint_server">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etBaseUrl"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:inputType="textUri"
-                android:singleLine="true" />
-        </com.google.android.material.textfield.TextInputLayout>
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/tip_server_emulator"
+            android:layout_marginTop="8dp"
+            android:text="@string/tip_jwgl"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
@@ -163,7 +150,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="22dp"
-            android:text="服务端接口"
+            android:text="数据来源"
             android:textColor="@color/brand"
             android:textSize="16sp"
             android:textStyle="bold" />
