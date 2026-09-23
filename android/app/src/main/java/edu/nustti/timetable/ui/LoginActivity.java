@@ -101,7 +101,12 @@ public class LoginActivity extends AppCompatActivity {
         }, new Async.Fail() {
             @Override
             public void onError(Exception e) {
-                setBusy(false, "登录失败：" + message(e));
+                String msg = message(e);
+                if (msg.startsWith("请")) {
+                    setBusy(false, msg);
+                } else {
+                    setBusy(false, "登录失败：" + msg);
+                }
             }
         });
     }

@@ -4,7 +4,6 @@
 
     <string name="nav_week">整周</string>
     <string name="nav_today">今日</string>
-    <string name="nav_compact">紧凑</string>
     <string name="nav_settings">设置</string>
 
     <string name="hint_student_id">学号</string>

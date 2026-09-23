@@ -26,7 +26,7 @@ import edu.nustti.timetable.edu.JwglSession;
 import edu.nustti.timetable.model.TimetableResult;
 
 /**
- * 主界面：底部四个页签（整周 / 今日 / 紧凑 / 设置），统一持有课表数据并向下分发。
+ * 主界面：底部三个页签（整周 / 今日 / 设置），统一持有课表数据并向下分发。
  *
  * <p>课表由手机端直连教务系统官网获取，刷新失败的判断依据是教务系统返回的登录态与错误信息。</p>
  */
@@ -93,8 +93,6 @@ public class MainActivity extends AppCompatActivity {
                         return new WeekFragment();
                     case 1:
                         return new TodayFragment();
-                    case 2:
-                        return new CompactFragment();
                     default:
                         return new SettingsFragment();
                 }
@@ -102,10 +100,10 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public int getItemCount() {
-                return 4;
+                return 3;
             }
         });
-        viewPager.setOffscreenPageLimit(3);
+        viewPager.setOffscreenPageLimit(2);
         viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
@@ -120,10 +118,8 @@ public class MainActivity extends AppCompatActivity {
                     viewPager.setCurrentItem(0, true);
                 } else if (id == R.id.nav_today) {
                     viewPager.setCurrentItem(1, true);
-                } else if (id == R.id.nav_compact) {
-                    viewPager.setCurrentItem(2, true);
                 } else if (id == R.id.nav_settings) {
-                    viewPager.setCurrentItem(3, true);
+                    viewPager.setCurrentItem(2, true);
                 }
                 return true;
             }

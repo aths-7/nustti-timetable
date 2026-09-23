@@ -22,17 +22,12 @@ import edu.nustti.timetable.model.Course;
 import edu.nustti.timetable.model.TimetableResult;
 
 /**
- * 手写课表网格视图，支持两种呈现：
- * <ul>
- *   <li>{@link #MODE_FULL}：整周课表，课程块显示课程名 / 教室 / 教师 / 周次</li>
- *   <li>{@link #MODE_COMPACT}：紧凑课表，课程块只显示课程名，字号与行高更小，一屏看更多</li>
- * </ul>
+ * 手写课表网格视图，整周课表：课程块显示课程名 / 教室 / 教师 / 周次。
  * 表格结构（含 rowspan 合并单元格）由课表解析器解析后以「星期 + 小节区间」形式下发。
  */
 public class WeekGridView extends View {
 
     public static final int MODE_FULL = 0;
-    public static final int MODE_COMPACT = 1;
 
     public interface OnCourseClickListener {
         void onCourseClick(Course course);
@@ -171,37 +166,30 @@ public class WeekGridView extends View {
     // ------------------------------------------------------------------ //
 
     private int rowsMin() {
-        return mode == MODE_COMPACT ? 10 : 10;
+        return 10;
     }
 
     private void applyModeMetrics(float scaled) {
-        if (mode == MODE_COMPACT) {
-            titleText.setTextSize(10 * scaled);
-            bodyText.setTextSize(9 * scaled);
-            labelText.setTextSize(10 * scaled);
-            labelSubText.setTextSize(8 * scaled);
-        } else {
-            titleText.setTextSize(12.5f * scaled);
-            bodyText.setTextSize(10 * scaled);
-            labelText.setTextSize(11 * scaled);
-            labelSubText.setTextSize(9 * scaled);
-        }
+        titleText.setTextSize(12.5f * scaled);
+        bodyText.setTextSize(10 * scaled);
+        labelText.setTextSize(11 * scaled);
+        labelSubText.setTextSize(9 * scaled);
     }
 
     private float labelW() {
-        return dp(mode == MODE_COMPACT ? 34 : 52);
+        return dp(52);
     }
 
     private float colW() {
-        return dp(mode == MODE_COMPACT ? 62 : 96);
+        return dp(96);
     }
 
     private float rowH() {
-        return dp(mode == MODE_COMPACT ? 46 : 74);
+        return dp(74);
     }
 
     private float headerH() {
-        return dp(mode == MODE_COMPACT ? 28 : 38);
+        return dp(38);
     }
 
     private int desiredWidth() {
@@ -333,9 +321,6 @@ public class WeekGridView extends View {
         float y = rect.top + pad + titleText.getTextSize() - dp(2);
         canvas.drawText(name, rect.left + pad, y, titleText);
 
-        if (mode == MODE_COMPACT) {
-            return;
-        }
         float lineH = bodyText.getTextSize() + dp(2);
         if (rect.height() > lineH * 2 + dp(6)) {
             bodyText.setColor(Color.parseColor("#EFF6FF"));
