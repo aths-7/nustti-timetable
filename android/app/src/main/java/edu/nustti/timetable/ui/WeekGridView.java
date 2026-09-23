@@ -185,7 +185,7 @@ public class WeekGridView extends View {
     }
 
     private float rowH() {
-        return dp(74);
+        return dp(50);
     }
 
     private float headerH() {
@@ -320,32 +320,7 @@ public class WeekGridView extends View {
                 TextUtils.TruncateAt.END).toString();
         float y = rect.top + pad + titleText.getTextSize() - dp(2);
         canvas.drawText(name, rect.left + pad, y, titleText);
-
-        float lineH = bodyText.getTextSize() + dp(2);
-        if (rect.height() > lineH * 2 + dp(6)) {
-            bodyText.setColor(Color.parseColor("#EFF6FF"));
-            String room = TextUtils.ellipsize(course.room == null ? "" : course.room, bodyText, maxWidth,
-                    TextUtils.TruncateAt.END).toString();
-            if (!room.isEmpty()) {
-                y += lineH;
-                canvas.drawText(room, rect.left + pad, y, bodyText);
-            }
-            if (rect.height() > lineH * 3 + dp(4)) {
-                String teacher = TextUtils.ellipsize(course.teacher == null ? "" : course.teacher, bodyText,
-                        maxWidth, TextUtils.TruncateAt.END).toString();
-                if (!teacher.isEmpty()) {
-                    y += lineH;
-                    canvas.drawText(teacher, rect.left + pad, y, bodyText);
-                }
-            }
-            if (rect.height() > lineH * 4 + dp(2)) {
-                String weeks = TextUtils.ellipsize(course.weeksText(), bodyText, maxWidth,
-                        TextUtils.TruncateAt.END).toString();
-                y += lineH;
-                bodyText.setColor(Color.parseColor("#DBEAFE"));
-                canvas.drawText(weeks, rect.left + pad, y, bodyText);
-            }
-        }
+        // 紧凑模式下课程块仅显示课程名；教师/教室/周次等完整信息通过点击课程块弹出的详情查看
     }
 
     // ------------------------------------------------------------------ //

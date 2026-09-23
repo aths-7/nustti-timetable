@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application'
 }
 
+// 本机 release 签名：keystore 与口令存放于仓库外，不入 git
+def keystorePropsFile = new File("C:/Users/Aths/AppData/Roaming/Tencent/Marvis/User/oAN1i2ekDRYQVs4rgC36qkvyR49I/workspace/conv_e382461f50ef4eb4858d00cc6b5e1793/temp/keystore/keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace 'edu.nustti.timetable'
     compileSdk 35
@@ -12,8 +19,19 @@ android {
         applicationId "edu.nustti.timetable"
         minSdk 24
         targetSdk 35
-        versionCode 3
-        versionName "2.1.0"
+        versionCode 4
+        versionName "2.1.1"
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
@@ -23,6 +41,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
