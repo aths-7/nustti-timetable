@@ -77,12 +77,21 @@ public class LoginActivity extends AppCompatActivity {
     private void doLogin() {
         final String studentId = text(etStudentId);
         final String password = text(etPassword);
-        if (studentId.isEmpty() || password.isEmpty()) {
+        if (studentId.isEmpty() && password.isEmpty()) {
             setStatus("请填写学号与密码");
+            return;
+        }
+        if (studentId.isEmpty()) {
+            setStatus("请填写学号");
+            return;
+        }
+        if (password.isEmpty()) {
+            setStatus("请填写密码");
             return;
         }
         store.setBaseUrl(JwglClient.DEFAULT_BASE);
         store.setStudentId(studentId);
+        store.setPassword(password);
 
         setBusy(true, "正在登录教务系统官网 ...");
         Async.run(new Async.Task<TimetableResult>() {
