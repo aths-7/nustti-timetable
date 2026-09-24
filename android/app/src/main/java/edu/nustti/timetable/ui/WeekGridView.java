@@ -251,7 +251,7 @@ public class WeekGridView extends View {
     }
 
     private float rowH() {
-        return dp(50);
+        return dp(46);
     }
 
     private float headerH() {
@@ -390,7 +390,7 @@ public class WeekGridView extends View {
             int end = Math.max(start, Math.min(rows, display.endSession()));
             float top = headerH + (start - 1) * rowH + dp(2);
             float bottom = headerH + end * rowH - dp(2);
-            float blockW = colW / 2f - dp(4);
+            float blockW = colW - dp(8);
             float left = cellLeft + (colW - blockW) / 2f;
             RectF rect = new RectF(left, top, left + blockW, bottom);
             drawBlock(canvas, rect, display);
@@ -407,7 +407,7 @@ public class WeekGridView extends View {
         float radius = dp(6);
         canvas.drawRoundRect(rect, radius, radius, blockPaint);
 
-        float pad = dp(4);
+        float pad = dp(3);
         float maxWidth = rect.width() - pad * 2;
         if (maxWidth < dp(10)) {
             return;
@@ -416,29 +416,46 @@ public class WeekGridView extends View {
         String room = course.room == null ? "" : course.room;
         boolean hasRoom = !room.isEmpty();
 
-        float lineH = titleText.getFontSpacing();
+        float scaled = getResources().getDisplayMetrics().scaledDensity;
         float roomLineH = bodyText.getFontSpacing() + dp(2);
         float roomH = hasRoom ? roomLineH : 0f;
-        int maxTitleLines = (int) Math.max(1,
-                Math.floor((rect.height() - pad * 2 - roomH) / lineH));
 
-        // 课程名：完整显示、自动换行为多行（仅受块内可用高度限制，不截断文字）
-        StaticLayout title = StaticLayout.Builder.obtain(name, 0, name.length(), titleText,
-                Math.max(1, (int) maxWidth))
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setMaxLines(maxTitleLines)
-                .setEllipsize(null)
-                .build();
+        // 课程名：自动换行为多行完整显示；行数超出块内可用高度时逐级缩小字号（12.5sp -> 9sp）适配，不截断文字
+        float titleSize = 12.5f * scaled;
+        float minTitleSize = 9f * scaled;
+        StaticLayout title = null;
+        while (titleSize >= minTitleSize) {
+            titleText.setTextSize(titleSize);
+            int maxTitleLines = (int) Math.max(1,
+                    Math.floor((rect.height() - pad * 2 - roomH) / titleText.getFontSpacing()));
+            title = StaticLayout.Builder.obtain(name, 0, name.length(), titleText,
+                    Math.max(1, (int) maxWidth))
+                    .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                    .setMaxLines(maxTitleLines)
+                    .setEllipsize(null)
+                    .build();
+            if (title.getLineCount() <= maxTitleLines) {
+                break;
+            }
+            titleSize -= 0.5f * scaled;
+        }
+        if (title == null) {
+            return;
+        }
 
         canvas.save();
         canvas.translate(rect.left + pad, rect.top + pad);
         title.draw(canvas);
         canvas.restore();
 
-        // 教室：显示在课程名下方；名称过长时省略号截断，避免溢出块边界
+        // 教室：显示在课程名下方（@ 前缀）；过长时省略号截断，避免溢出块边界
         if (hasRoom) {
             float roomY = rect.top + pad + title.getHeight() + dp(2) + roomLineH;
-            String roomText = TextUtils.ellipsize(room, bodyText, maxWidth,
+            float roomBottomLimit = rect.bottom - pad;
+            if (roomY + bodyText.descent() > roomBottomLimit) {
+                roomY = roomBottomLimit - bodyText.descent();
+            }
+            String roomText = TextUtils.ellipsize("@" + room, bodyText, maxWidth,
                     TextUtils.TruncateAt.END).toString();
             canvas.drawText(roomText, rect.left + pad, roomY, bodyText);
         }
