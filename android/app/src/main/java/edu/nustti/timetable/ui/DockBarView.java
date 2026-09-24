@@ -1,11 +1,17 @@
 package edu.nustti.timetable.ui;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.LayerDrawable;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -72,20 +78,8 @@ public class DockBarView extends FrameLayout {
     private void buildLayers(Context context) {
         float corner = dp(CORNER_DP);
 
-        // 玻璃层：半透明白渐变 + 顶部高光 + 1dp 细边框，模拟液态玻璃折射高光
-        glassLayer = new View(context);
-        glassLayer.setClipToOutline(true);
-        glassLayer.setOutlineProvider(roundOutline(corner));
-        GradientDrawable glassBase = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0xCCFFFFFF, 0x66FFFFFF});
-        glassBase.setCornerRadius(corner);
-        glassBase.setStroke((int) dp(1f), 0x73FFFFFF);
-        GradientDrawable highlight = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{0x80FFFFFF, 0x00FFFFFF});
-        highlight.setCornerRadii(new float[]{corner, corner, corner, corner, 0f, 0f, 0f, 0f});
-        glassLayer.setBackground(new LayerDrawable(new Drawable[]{glassBase, highlight}));
-        // 固定高度覆盖内容行区域（宽铺满，高 = HEIGHT_DP + 内容行 topMargin），
-        // 严禁 MATCH_PARENT×MATCH_PARENT：DockBarView 高度为 wrap_content 时会被撑成全屏
+        // 玻璃层：液态玻璃自绘层（多层阴影 + 双实线边框 + 内部光晕 + 对比度滤镜）
+        glassLayer = new GlassLayerView(context, corner);
         addView(glassLayer, fixedGlassParams());
 
         // 内容行：三个图标（整周 / 今日 / 设置）
@@ -106,8 +100,8 @@ public class DockBarView extends FrameLayout {
         }
         addView(contentRow);
 
-        // 阴影：胶囊形轮廓 + elevation，悬浮在内容之上
-        setElevation(dp(16));
+        // 阴影：胶囊形轮廓 + elevation（调低，外阴影主要由自绘层提供）
+        setElevation(dp(8));
         setOutlineProvider(roundOutline(corner));
         setClipToOutline(false);
 
@@ -125,7 +119,7 @@ public class DockBarView extends FrameLayout {
         item.setClickable(true);
         item.setFocusable(true);
 
-        ImageView icon = new ImageView(context);
+        ImageView icon = new ShadowedImageView(context);
         icon.setImageResource(iconRes);
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams((int) dp(26), (int) dp(26));
         icon.setLayoutParams(ilp);
@@ -174,9 +168,10 @@ public class DockBarView extends FrameLayout {
     }
 
     private FrameLayout.LayoutParams fixedGlassParams() {
+        // 高度 = 玻璃主体(HEIGHT_DP + topMargin) + 底部阴影留白；宽铺满，左右阴影靠主体 inset 留出
         return new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                (int) dp(HEIGHT_DP) + (int) dp(2));
+                (int) dp(HEIGHT_DP) + (int) dp(2) + (int) dp(14));
     }
 
     // ------------------------------------------------------------------ //
@@ -263,5 +258,126 @@ public class DockBarView extends FrameLayout {
     private float dp(float value) {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
                 getResources().getDisplayMetrics());
+    }
+
+    // ------------------------------------------------------------------ //
+    // 液态玻璃自绘层
+    // ------------------------------------------------------------------ //
+
+    /**
+     * 圆润悬浮玻璃自绘层（软件层渲染以启用 Paint.setShadowLayer 对图形绘制支持）：
+     * <ol>
+     *   <li>柔和外阴影：远投影 + 近投影两层叠加，形成柔和悬浮感；</li>
+     *   <li>玻璃底：浅灰半透明磨砂渐变（与右上角三点容器同一玻璃语言），无边框；</li>
+     *   <li>顶部柔和高光：弱化后的渐变高光提升玻璃质感。</li>
+     * </ol>
+     */
+    private static class GlassLayerView extends View {
+
+        private final float corner;
+        private final float density;
+        private final RectF body = new RectF();
+
+        private final Paint shadowOuter = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint shadowSoft = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        GlassLayerView(Context context, float corner) {
+            super(context);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            this.corner = corner;
+            density = getResources().getDisplayMetrics().density;
+
+            // 1) 柔和阴影：远投影 + 近投影（fill 透明只留阴影）
+            shadowOuter.setShadowLayer(dp(14f), 0f, dp(6f), 0x26000000);
+            shadowOuter.setColor(0x00000000);
+            shadowSoft.setShadowLayer(dp(8f), 0f, dp(3f), 0x1F000000);
+            shadowSoft.setColor(0x00000000);
+
+            // 2) 浅灰半透明磨砂渐变底（无边框，柔和圆角）
+            glassPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(HEIGHT_DP + 2f),
+                    new int[]{0x99D8DCE0, 0x59D8DCE0}, null, Shader.TileMode.CLAMP));
+
+            // 3) 柔和顶部高光
+            highlightPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(30f),
+                    new int[]{0x40FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+        }
+
+        private float dp(float v) {
+            return v * density;
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth();
+            // 玻璃主体：左右留白供阴影溢出，顶部 3dp 起，与内容行对齐
+            body.set(dp(8f), dp(3f), w - dp(8f), dp(3f) + dp(HEIGHT_DP + 2f));
+
+            // 1) 柔和阴影（远投影 + 近投影）
+            canvas.drawRoundRect(body, corner, corner, shadowOuter);
+            canvas.drawRoundRect(body, corner, corner, shadowSoft);
+
+            // 2) 浅灰半透明磨砂渐变底（无边框）
+            canvas.drawRoundRect(body, corner, corner, glassPaint);
+
+            // 3) 柔和顶部高光
+            RectF top = new RectF(body.left, body.top, body.right, body.top + dp(30f));
+            canvas.drawRoundRect(top, corner, corner, highlightPaint);
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    // 带投影的图标
+    // ------------------------------------------------------------------ //
+
+    /**
+     * 带 drop-shadow 的图标视图：软件层先按图标 alpha 蒙版绘制投影，再绘制原图标。
+     */
+    private static class ShadowedImageView extends ImageView {
+
+        private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float density;
+        private Bitmap shadowMask;
+
+        ShadowedImageView(Context context) {
+            super(context);
+            density = context.getResources().getDisplayMetrics().density;
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            shadowPaint.setShadowLayer(dp(3f), 0f, dp(1.5f), 0x4D000000);
+        }
+
+        private float dp(float v) {
+            return v * density;
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            Drawable d = getDrawable();
+            if (d == null) {
+                super.onDraw(canvas);
+                return;
+            }
+            int w = getWidth();
+            int h = getHeight();
+            if (shadowMask == null || shadowMask.getWidth() != w || shadowMask.getHeight() != h) {
+                if (w <= 0 || h <= 0) {
+                    super.onDraw(canvas);
+                    return;
+                }
+                shadowMask = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                Canvas mc = new Canvas(shadowMask);
+                Rect b = d.copyBounds();
+                if (b.isEmpty()) {
+                    b.set(0, 0, w, h);
+                    d.setBounds(b);
+                }
+                d.draw(mc);
+            }
+            // 先画投影（阴影由图标 alpha 蒙版 + setShadowLayer 生成）
+            canvas.drawBitmap(shadowMask, 0f, 0f, shadowPaint);
+            super.onDraw(canvas);
+        }
     }
 }

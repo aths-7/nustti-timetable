@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface">
+    android:background="@android:color/transparent">
 
     <LinearLayout
         android:id="@+id/contentHost"
@@ -11,13 +11,11 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <com.google.android.material.appbar.MaterialToolbar
+        <!-- 顶部液态玻璃标题栏：标题文字 + 右上三点独立小玻璃容器（自绘玻璃，主题色氛围层） -->
+        <edu.nustti.timetable.ui.GlassToolbarView
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="@color/brand"
-            app:title="@string/app_name"
-            app:titleTextColor="@color/white" />
+            android:layout_height="?attr/actionBarSize" />
 
         <androidx.viewpager2.widget.ViewPager2
             android:id="@+id/viewPager"

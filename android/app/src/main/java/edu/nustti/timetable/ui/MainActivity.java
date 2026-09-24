@@ -2,17 +2,19 @@ package edu.nustti.timetable.ui;
 
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
+import androidx.appcompat.widget.PopupMenu;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -58,30 +60,43 @@ public class MainActivity extends AppCompatActivity {
         // 边缘到边缘：内容延伸绘制到状态栏与系统导航栏区域，避免底部系统栏露出白色背景
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         setContentView(R.layout.activity_main);
+        applyWindowBackground();
         applyWindowInsets();
+
+        // 顶部玻璃标题栏为浅色玻璃底，状态栏图标改用深色保证可见
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(true);
 
         repository = new TimetableRepository(this);
         week = repository.store().getCurrentWeek();
         data = repository.cached();
 
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        toolbar.setTitle(R.string.app_name);
+        GlassToolbarView toolbar = findViewById(R.id.toolbar);
+        toolbar.setTitle(getString(R.string.app_name));
         // 应用用户自定义的顶部主题颜色（默认品牌蓝）
         applyThemeColor();
-        toolbar.inflateMenu(R.menu.main_menu);
-        toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
+        // 右上角三个点独立小玻璃容器：点击弹出刷新 / 退出菜单，行为与原先一致
+        toolbar.getMenuButton().setOnClickListener(new View.OnClickListener() {
             @Override
-            public boolean onMenuItemClick(MenuItem item) {
-                int id = item.getItemId();
-                if (id == R.id.action_refresh) {
-                    showRefreshDialog();
-                    return true;
-                }
-                if (id == R.id.action_logout) {
-                    confirmLogout();
-                    return true;
-                }
-                return false;
+            public void onClick(View v) {
+                PopupMenu popup = new PopupMenu(MainActivity.this, v);
+                popup.getMenuInflater().inflate(R.menu.main_menu, popup.getMenu());
+                popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+                    @Override
+                    public boolean onMenuItemClick(MenuItem item) {
+                        int id = item.getItemId();
+                        if (id == R.id.action_refresh) {
+                            showRefreshDialog();
+                            return true;
+                        }
+                        if (id == R.id.action_logout) {
+                            confirmLogout();
+                            return true;
+                        }
+                        return false;
+                    }
+                });
+                popup.show();
             }
         });
 
@@ -92,11 +107,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 边缘到边缘 inset 适配：toolbar 整体加高（原始高度 + 状态栏）使蓝色背景覆盖状态栏、标题进入安全区；Dock 距底固定 30dp。 */
+    /** 边缘到边缘 inset 适配：toolbar 整体加高（原始高度 + 状态栏）使玻璃背景覆盖状态栏、标题进入安全区；Dock 距底固定 30dp。 */
     private void applyWindowInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            Toolbar tb = findViewById(R.id.toolbar);
+            GlassToolbarView tb = findViewById(R.id.toolbar);
             if (tb != null) {
                 ViewGroup.LayoutParams lp = tb.getLayoutParams();
                 if (toolbarBaseHeight < 0) {
@@ -202,6 +217,7 @@ public class MainActivity extends AppCompatActivity {
 
     /** 自定义背景变化后通知周视图 / 今日页重新加载背景。 */
     public void notifyBackgroundChanged() {
+        applyWindowBackground();
         List<Fragment> fragments = getSupportFragmentManager().getFragments();
         for (Fragment fragment : fragments) {
             if (fragment instanceof WeekFragment) {
@@ -212,13 +228,28 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 应用用户自定义的顶部主题颜色到 toolbar（默认品牌蓝），设置页修改后调用即时生效。 */
+    /** 将「壁纸+加深」背景应用到窗口根（android.R.id.content），铺满含状态栏/导航栏的全屏区域；
+     *  各 Fragment 根布局为透明，透出该统一背景；未启用壁纸时回退默认 surface 底色。 */
+    private void applyWindowBackground() {
+        View content = findViewById(android.R.id.content);
+        if (content == null) {
+            return;
+        }
+        Drawable bg = BackgroundManager.backgroundDrawable(this);
+        if (bg != null) {
+            content.setBackground(bg);
+        } else {
+            content.setBackgroundResource(R.color.surface);
+        }
+    }
+
+    /** 应用用户自定义的顶部主题颜色到玻璃标题栏（默认品牌蓝），设置页修改后调用即时生效。 */
     public void applyThemeColor() {
-        Toolbar tb = findViewById(R.id.toolbar);
+        GlassToolbarView tb = findViewById(R.id.toolbar);
         if (tb == null) {
             return;
         }
-        tb.setBackgroundColor(new SessionStore(this).getThemeColor());
+        tb.setThemeColor(new SessionStore(this).getThemeColor());
     }
 
     public void refresh(boolean demo) {
