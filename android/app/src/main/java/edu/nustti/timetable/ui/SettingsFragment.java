@@ -14,6 +14,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -194,6 +195,36 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
             }
         });
         updateBgStatus();
+
+        // 课程块透明度：实时持久化并刷新周/今日视图，实现拖动即预览
+        SeekBar sbBlockAlpha = view.findViewById(R.id.sbBlockAlpha);
+        final TextView tvBlockAlpha = view.findViewById(R.id.tvBlockAlpha);
+        TextView btnResetBlockAlpha = view.findViewById(R.id.btnResetBlockAlpha);
+        sbBlockAlpha.setProgress(BackgroundManager.blockAlphaPercent(requireContext()));
+        tvBlockAlpha.setText(BackgroundManager.blockAlphaPercent(requireContext()) + "%");
+        sbBlockAlpha.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                tvBlockAlpha.setText(progress + "%");
+                BackgroundManager.setBlockAlphaPercent(requireContext(), progress);
+                main.notifyBackgroundChanged();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        btnResetBlockAlpha.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sbBlockAlpha.setProgress(BackgroundManager.DEFAULT_BLOCK_ALPHA_PERCENT);
+                toast("课程块透明度已恢复默认（85%）");
+            }
+        });
 
         spTerm.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override

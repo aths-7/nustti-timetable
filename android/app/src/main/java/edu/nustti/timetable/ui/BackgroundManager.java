@@ -19,8 +19,12 @@ public final class BackgroundManager {
     private static final String PREFS = "timetable_bg";
     private static final String KEY_ENABLED = "enabled";
     private static final String KEY_MODE = "scale_mode";
+    private static final String KEY_BLOCK_ALPHA = "block_alpha_percent";
     private static final String FILE_NAME = "background.jpg";
     private static final int MAX_SIDE = 1920;
+
+    /** 课程块透明度默认值（百分比 0-100）：85% 时背景可见且课程文字保持可读。 */
+    public static final int DEFAULT_BLOCK_ALPHA_PERCENT = 85;
 
     /** 背景显示模式：等比例裁切（默认，CENTER_CROP 等价） / 拉伸铺满。 */
     public static final String MODE_CROP = "crop";
@@ -80,6 +84,19 @@ public final class BackgroundManager {
     public static void setScaleMode(Context context, String mode) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putString(KEY_MODE, mode).apply();
+    }
+
+    /** 当前课程块透明度（百分比 0-100，默认 85）。 */
+    public static int blockAlphaPercent(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getInt(KEY_BLOCK_ALPHA, DEFAULT_BLOCK_ALPHA_PERCENT);
+    }
+
+    /** 保存课程块透明度（百分比 0-100）。 */
+    public static void setBlockAlphaPercent(Context context, int percent) {
+        int clamped = Math.max(0, Math.min(100, percent));
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putInt(KEY_BLOCK_ALPHA, clamped).apply();
     }
 
     /** 解码背景位图；未设置背景时返回 null。调用方负责 recycle。 */

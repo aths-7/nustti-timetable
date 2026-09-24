@@ -97,9 +97,10 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
         applyBackground();
     }
 
-    /** 自定义背景变化后刷新背景。 */
+    /** 自定义背景 / 透明度变化后刷新背景与课程卡片。 */
     public void reloadBackground() {
         applyBackground();
+        render();
     }
 
     /** 应用自定义背景到根布局（含半透明遮罩，未设置时恢复默认底色）。 */
@@ -179,9 +180,12 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
         box.setPadding(pad, pad, pad, pad);
 
         GradientDrawable background = new GradientDrawable();
-        background.setColor(0xFFEEF3FF);
+        // 卡片背景按用户设置的课程块透明度叠加 alpha，使自定义背景透过卡片可见（文字保持深色可读）
+        int alphaPercent = BackgroundManager.blockAlphaPercent(requireContext());
+        int alpha = Math.round(alphaPercent * 2.55f);
+        background.setColor(android.graphics.Color.argb(alpha, 0xEE, 0xF3, 0xFF));
         background.setCornerRadius(dp(10));
-        background.setStroke(dp(1), 0xFFC7D8F5);
+        background.setStroke(dp(1), android.graphics.Color.argb(alpha, 0xC7, 0xD8, 0xF5));
         box.setBackground(background);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(

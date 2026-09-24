@@ -119,8 +119,11 @@ public class WeekGridView extends View {
 
         titleText.setColor(Color.WHITE);
         titleText.setFakeBoldText(true);
+        // 课程块可能半透明透出背景，给文字加阴影保证可读
+        titleText.setShadowLayer(dp(1.5f), 0f, dp(1f), 0xB3000000);
 
         bodyText.setColor(Color.parseColor("#F1F5F9"));
+        bodyText.setShadowLayer(dp(1.5f), 0f, dp(1f), 0xB3000000);
 
         applyModeMetrics(scaled);
     }
@@ -414,6 +417,9 @@ public class WeekGridView extends View {
     private void drawBlock(Canvas canvas, RectF rect, Course course) {
         int color = BLOCK_COLORS[Math.abs(course.name.hashCode()) % BLOCK_COLORS.length];
         blockPaint.setColor(color);
+        // 按用户设置的透明度叠加 alpha（百分比 -> 0-255），使自定义背景透过课程块可见
+        int alphaPercent = BackgroundManager.blockAlphaPercent(getContext());
+        blockPaint.setAlpha(Math.round(alphaPercent * 2.55f));
         float radius = dp(6);
         canvas.drawRoundRect(rect, radius, radius, blockPaint);
 
