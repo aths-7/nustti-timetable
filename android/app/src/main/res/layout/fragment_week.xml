@@ -66,31 +66,25 @@
             android:layout_weight="1" />
     </LinearLayout>
 
-    <HorizontalScrollView
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="6dp"
         android:layout_weight="1"
-        android:scrollbars="horizontal">
+        android:scrollbars="vertical">
 
-        <ScrollView
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:scrollbars="vertical">
-
-            <edu.nustti.timetable.ui.WeekGridView
-                android:id="@+id/gridView"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-        </ScrollView>
-    </HorizontalScrollView>
+        <edu.nustti.timetable.ui.WeekGridView
+            android:id="@+id/gridView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+    </ScrollView>
 
     <TextView
         android:id="@+id/tvHint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:text="左右滑动查看整周，点击课程块查看详情"
+        android:text="上下滑动查看整周，点击课程块查看详情"
         android:textColor="@color/text_secondary"
         android:textSize="11sp" />
 </LinearLayout>

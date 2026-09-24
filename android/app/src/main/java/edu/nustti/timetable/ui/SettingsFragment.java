@@ -143,6 +143,32 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
                 toast("已恢复默认背景");
             }
         });
+
+        Spinner spBgMode = view.findViewById(R.id.spBgMode);
+        ArrayAdapter<String> bgModeAdapter = new ArrayAdapter<>(requireContext(),
+                android.R.layout.simple_spinner_item,
+                new String[]{"等比例裁切（推荐）", "拉伸铺满"});
+        bgModeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spBgMode.setAdapter(bgModeAdapter);
+        spBgMode.setSelection(
+                BackgroundManager.MODE_CROP.equals(BackgroundManager.scaleMode(requireContext())) ? 0 : 1);
+        spBgMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String mode = position == 0 ? BackgroundManager.MODE_CROP : BackgroundManager.MODE_STRETCH;
+                if (mode.equals(BackgroundManager.scaleMode(requireContext()))) {
+                    return;
+                }
+                BackgroundManager.setScaleMode(requireContext(), mode);
+                main.notifyBackgroundChanged();
+                updateBgStatus();
+                toast("背景显示模式已切换");
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
         updateBgStatus();
 
         spTerm.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -258,7 +284,9 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
 
     private void updateBgStatus() {
         boolean has = BackgroundManager.hasBackground(requireContext());
-        tvBgStatus.setText(has ? "背景：已启用自定义背景" : "背景：默认");
+        String mode = BackgroundManager.MODE_CROP.equals(BackgroundManager.scaleMode(requireContext()))
+                ? "等比例裁切" : "拉伸铺满";
+        tvBgStatus.setText(has ? "背景：已启用自定义背景（" + mode + "）" : "背景：默认（" + mode + "）");
     }
 
     private String text(EditText editText) {

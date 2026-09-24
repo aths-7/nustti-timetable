@@ -1,7 +1,6 @@
 package edu.nustti.timetable.ui;
 
 import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
@@ -114,7 +113,8 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
             root.setBackgroundResource(R.color.surface);
             return;
         }
-        BitmapDrawable bg = new BitmapDrawable(getResources(), bitmap);
+        boolean crop = BackgroundManager.MODE_CROP.equals(BackgroundManager.scaleMode(requireContext()));
+        Drawable bg = new BackgroundManager.BgScaleDrawable(bitmap, crop);
         GradientDrawable shade = new GradientDrawable();
         shade.setColor(0x66000000);
         root.setBackground(new LayerDrawable(new Drawable[]{bg, shade}));

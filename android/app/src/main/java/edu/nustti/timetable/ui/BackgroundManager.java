@@ -4,6 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.net.Uri;
 
 import java.io.File;
@@ -15,8 +18,13 @@ public final class BackgroundManager {
 
     private static final String PREFS = "timetable_bg";
     private static final String KEY_ENABLED = "enabled";
+    private static final String KEY_MODE = "scale_mode";
     private static final String FILE_NAME = "background.jpg";
     private static final int MAX_SIDE = 1920;
+
+    /** 背景显示模式：等比例裁切（默认，CENTER_CROP 等价） / 拉伸铺满。 */
+    public static final String MODE_CROP = "crop";
+    public static final String MODE_STRETCH = "stretch";
 
     private BackgroundManager() {
     }
@@ -62,6 +70,18 @@ public final class BackgroundManager {
                 .clear().apply();
     }
 
+    /** 当前背景显示模式（默认等比例裁切）。 */
+    public static String scaleMode(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_MODE, MODE_CROP);
+    }
+
+    /** 保存背景显示模式。 */
+    public static void setScaleMode(Context context, String mode) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY_MODE, mode).apply();
+    }
+
     /** 解码背景位图；未设置背景时返回 null。调用方负责 recycle。 */
     public static Bitmap loadBitmap(Context context) {
         if (!hasBackground(context)) {
@@ -99,5 +119,56 @@ public final class BackgroundManager {
 
     private static File bgFile(Context context) {
         return new File(bgDir(context), FILE_NAME);
+    }
+
+    /** 背景绘制 Drawable：按显示模式等比例裁切（CENTER_CROP 等价）或拉伸铺满。 */
+    public static final class BgScaleDrawable extends android.graphics.drawable.Drawable {
+        private final Bitmap bitmap;
+        private final boolean crop;
+
+        public BgScaleDrawable(Bitmap bitmap, boolean crop) {
+            this.bitmap = bitmap;
+            this.crop = crop;
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            if (bitmap == null || bitmap.isRecycled()) {
+                return;
+            }
+            Rect bounds = getBounds();
+            float vw = bounds.width();
+            float vh = bounds.height();
+            float bw = bitmap.getWidth();
+            float bh = bitmap.getHeight();
+            if (vw <= 0 || vh <= 0 || bw <= 0 || bh <= 0) {
+                return;
+            }
+            Rect src = new Rect(0, 0, (int) bw, (int) bh);
+            RectF dst;
+            if (crop) {
+                float scale = Math.max(vw / bw, vh / bh);
+                float dw = bw * scale;
+                float dh = bh * scale;
+                dst = new RectF((vw - dw) / 2f, (vh - dh) / 2f,
+                        (vw - dw) / 2f + dw, (vh - dh) / 2f + dh);
+            } else {
+                dst = new RectF(0, 0, vw, vh);
+            }
+            canvas.drawBitmap(bitmap, src, dst, null);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+        }
+
+        @Override
+        public void setColorFilter(android.graphics.ColorFilter colorFilter) {
+        }
+
+        @Override
+        public int getOpacity() {
+            return android.graphics.PixelFormat.TRANSLUCENT;
+        }
     }
 }

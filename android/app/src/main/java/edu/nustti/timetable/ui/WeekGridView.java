@@ -246,8 +246,10 @@ public class WeekGridView extends View {
         return dp(52);
     }
 
+    /** 列宽按屏幕可用宽度自适应：总宽=屏宽（时间列固定、7 列等比分配），实现整周单屏显示。 */
     private float colW() {
-        return dp(96);
+        float available = getWidth() - labelW();
+        return Math.max(dp(24), available / columns);
     }
 
     private float rowH() {
@@ -268,11 +270,12 @@ public class WeekGridView extends View {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        // 宽度直接采用父容器给定宽度（屏宽），不再取 desiredWidth 下限，实现整周单屏显示
         int width;
         if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED) {
             width = desiredWidth();
         } else {
-            width = Math.max(desiredWidth(), MeasureSpec.getSize(widthMeasureSpec));
+            width = Math.max(Math.round(dp(160)), MeasureSpec.getSize(widthMeasureSpec));
         }
         int height;
         if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) {
@@ -287,7 +290,7 @@ public class WeekGridView extends View {
     // 绘制
     // ------------------------------------------------------------------ //
 
-    /** 绘制自定义背景（centerCrop 铺满 + 半透明遮罩保证课程文字可读）。 */
+    /** 绘制自定义背景（默认等比例裁切铺满 + 半透明遮罩保证课程文字可读，可切换拉伸铺满）。 */
     private void drawBackground(Canvas canvas) {
         if (bgBitmap == null) {
             return;
@@ -299,12 +302,19 @@ public class WeekGridView extends View {
         if (bw <= 0 || bh <= 0) {
             return;
         }
-        float scale = Math.max(vw / bw, vh / bh);
-        float dw = bw * scale;
-        float dh = bh * scale;
         Rect src = new Rect(0, 0, (int) bw, (int) bh);
-        RectF dst = new RectF((vw - dw) / 2f, (vh - dh) / 2f,
-                (vw - dw) / 2f + dw, (vh - dh) / 2f + dh);
+        RectF dst;
+        if (BackgroundManager.MODE_CROP.equals(BackgroundManager.scaleMode(getContext()))) {
+            // 等比例裁切（CENTER_CROP 等价）：放大后居中铺满，超出部分裁切，不拉伸变形
+            float scale = Math.max(vw / bw, vh / bh);
+            float dw = bw * scale;
+            float dh = bh * scale;
+            dst = new RectF((vw - dw) / 2f, (vh - dh) / 2f,
+                    (vw - dw) / 2f + dw, (vh - dh) / 2f + dh);
+        } else {
+            // 拉伸铺满（非等比缩放填满整个视图）
+            dst = new RectF(0, 0, vw, vh);
+        }
         canvas.drawBitmap(bgBitmap, src, dst, null);
         canvas.drawColor(0x66000000);
     }
