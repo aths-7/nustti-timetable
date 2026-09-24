@@ -1,5 +1,6 @@
 package edu.nustti.timetable.ui;
 
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -12,6 +13,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.fragment.app.Fragment;
 
 import com.google.android.material.textfield.TextInputEditText;
@@ -34,11 +37,19 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
     private EditText etWeek;
     private TextView tvWeekRange;
     private TextView tvCacheInfo;
+    private TextView tvBgStatus;
     private Spinner spTerm;
 
     private TimetableResult data;
     private int week = 1;
     private boolean suppressTermCallback = true;
+
+    private final ActivityResultLauncher<String> pickImageLauncher =
+            registerForActivityResult(new ActivityResultContracts.GetContent(), uri -> {
+                if (uri != null) {
+                    handleBackgroundPicked(uri);
+                }
+            });
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -55,6 +66,7 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         etWeek = view.findViewById(R.id.etWeek);
         tvWeekRange = view.findViewById(R.id.tvWeekRange);
         tvCacheInfo = view.findViewById(R.id.tvCacheInfo);
+        tvBgStatus = view.findViewById(R.id.tvBgStatus);
         spTerm = view.findViewById(R.id.spTerm);
 
         etStudentId.setText(store.getStudentId());
@@ -113,6 +125,25 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
                 main.confirmLogout();
             }
         });
+
+        Button btnPickBackground = view.findViewById(R.id.btnPickBackground);
+        Button btnResetBackground = view.findViewById(R.id.btnResetBackground);
+        btnPickBackground.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                pickImageLauncher.launch("image/*");
+            }
+        });
+        btnResetBackground.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                BackgroundManager.clear(requireContext());
+                main.notifyBackgroundChanged();
+                updateBgStatus();
+                toast("已恢复默认背景");
+            }
+        });
+        updateBgStatus();
 
         spTerm.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -211,6 +242,23 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
                 + "周次范围：1 - " + max + " 周\n"
                 + "当前学期：" + (term.isEmpty() ? "（未选择）" : term) + "\n"
                 + "教务系统登录态：" + (JwglSession.ready() ? "已登录" : "未登录（刷新时自动重新登录）"));
+    }
+
+    /** SAF 选图结果：保存为背景并刷新课表页。 */
+    private void handleBackgroundPicked(Uri uri) {
+        boolean ok = BackgroundManager.save(requireContext(), uri);
+        if (ok) {
+            ((MainActivity) requireActivity()).notifyBackgroundChanged();
+            updateBgStatus();
+            toast("背景图片已应用");
+        } else {
+            toast("背景图片设置失败，请换一张图片重试");
+        }
+    }
+
+    private void updateBgStatus() {
+        boolean has = BackgroundManager.hasBackground(requireContext());
+        tvBgStatus.setText(has ? "背景：已启用自定义背景" : "背景：默认");
     }
 
     private String text(EditText editText) {

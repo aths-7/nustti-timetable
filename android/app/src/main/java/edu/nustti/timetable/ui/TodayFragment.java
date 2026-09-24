@@ -1,6 +1,10 @@
 package edu.nustti.timetable.ui;
 
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -90,6 +94,30 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
             public void onNothingSelected(AdapterView<?> parent) {
             }
         });
+
+        applyBackground();
+    }
+
+    /** 自定义背景变化后刷新背景。 */
+    public void reloadBackground() {
+        applyBackground();
+    }
+
+    /** 应用自定义背景到根布局（含半透明遮罩，未设置时恢复默认底色）。 */
+    private void applyBackground() {
+        View root = getView();
+        if (root == null) {
+            return;
+        }
+        Bitmap bitmap = BackgroundManager.loadBitmap(requireContext());
+        if (bitmap == null) {
+            root.setBackgroundResource(R.color.surface);
+            return;
+        }
+        BitmapDrawable bg = new BitmapDrawable(getResources(), bitmap);
+        GradientDrawable shade = new GradientDrawable();
+        shade.setColor(0x66000000);
+        root.setBackground(new LayerDrawable(new Drawable[]{bg, shade}));
     }
 
     @Override

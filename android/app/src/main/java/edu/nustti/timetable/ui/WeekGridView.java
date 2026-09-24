@@ -1,9 +1,11 @@
 package edu.nustti.timetable.ui;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.text.TextPaint;
 import android.text.TextUtils;
@@ -65,6 +67,9 @@ public class WeekGridView extends View {
     private OnCourseClickListener listener;
     private final float density;
 
+    private Bitmap bgBitmap;
+    private boolean bgAttempted;
+
     public WeekGridView(Context context) {
         this(context, null);
     }
@@ -113,6 +118,17 @@ public class WeekGridView extends View {
 
     public void setTodayWeekday(int weekday) {
         this.todayWeekday = weekday;
+        invalidate();
+    }
+
+    /** 重新加载自定义背景（设置 / 恢复默认后调用）。 */
+    public void reloadBackground() {
+        if (bgBitmap != null) {
+            bgBitmap.recycle();
+            bgBitmap = null;
+        }
+        bgBitmap = BackgroundManager.loadBitmap(getContext());
+        bgAttempted = true;
         invalidate();
     }
 
@@ -221,9 +237,38 @@ public class WeekGridView extends View {
     // 绘制
     // ------------------------------------------------------------------ //
 
+    /** 绘制自定义背景（centerCrop 铺满 + 半透明遮罩保证课程文字可读）。 */
+    private void drawBackground(Canvas canvas) {
+        if (bgBitmap == null) {
+            return;
+        }
+        float vw = getWidth();
+        float vh = getHeight();
+        float bw = bgBitmap.getWidth();
+        float bh = bgBitmap.getHeight();
+        if (bw <= 0 || bh <= 0) {
+            return;
+        }
+        float scale = Math.max(vw / bw, vh / bh);
+        float dw = bw * scale;
+        float dh = bh * scale;
+        Rect src = new Rect(0, 0, (int) bw, (int) bh);
+        RectF dst = new RectF((vw - dw) / 2f, (vh - dh) / 2f,
+                (vw - dw) / 2f + dw, (vh - dh) / 2f + dh);
+        canvas.drawBitmap(bgBitmap, src, dst, null);
+        canvas.drawColor(0x66000000);
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        if (!bgAttempted) {
+            reloadBackground();
+            if (bgBitmap == null) {
+                bgAttempted = true;
+            }
+        }
+        drawBackground(canvas);
         float labelW = labelW();
         float colW = colW();
         float rowH = rowH();

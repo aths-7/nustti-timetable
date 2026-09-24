@@ -17,4 +17,11 @@ public class WeekFragment extends GridFragment {
     protected String titleText(int week) {
         return "第 " + week + " 周";
     }
+
+    /** 自定义背景变化后刷新网格背景。 */
+    public void reloadBackground() {
+        if (grid != null) {
+            grid.reloadBackground();
+        }
+    }
 }

@@ -170,6 +170,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /** 自定义背景变化后通知周视图 / 今日页重新加载背景。 */
+    public void notifyBackgroundChanged() {
+        List<Fragment> fragments = getSupportFragmentManager().getFragments();
+        for (Fragment fragment : fragments) {
+            if (fragment instanceof WeekFragment) {
+                ((WeekFragment) fragment).reloadBackground();
+            } else if (fragment instanceof TodayFragment) {
+                ((TodayFragment) fragment).reloadBackground();
+            }
+        }
+    }
+
     public void refresh(boolean demo) {
         toast(demo ? "正在加载演示课表..." : "正在直连教务系统官网刷新课表...");
         Async.run(new Async.Task<TimetableResult>() {
