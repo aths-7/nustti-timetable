@@ -34,5 +34,5 @@
         android:layout_gravity="bottom|center_horizontal"
         android:paddingStart="24dp"
         android:paddingEnd="24dp"
-        android:paddingBottom="14dp" />
+        android:paddingBottom="30dp" />
 </FrameLayout>

@@ -7,6 +7,9 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
 import android.net.Uri;
 
 import java.io.File;
@@ -107,6 +110,25 @@ public final class BackgroundManager {
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
         return BitmapFactory.decodeFile(bgFile(context).getAbsolutePath(), opts);
+    }
+
+    /** 返回「壁纸+加深」背景 Drawable（BgScaleDrawable 之上叠加 0x66000000 半透明遮罩，与 WeekGridView 原绘制效果一致）；
+     *  壁纸未启用或解码失败时返回 null。内部位图由 Drawable 持有，调用方 setBackground 后不得 recycle。 */
+    public static Drawable backgroundDrawable(Context context) {
+        if (!hasBackground(context)) {
+            return null;
+        }
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap bitmap = BitmapFactory.decodeFile(bgFile(context).getAbsolutePath(), opts);
+        if (bitmap == null) {
+            return null;
+        }
+        boolean crop = MODE_CROP.equals(scaleMode(context));
+        return new LayerDrawable(new Drawable[]{
+                new BgScaleDrawable(bitmap, crop),
+                new ColorDrawable(0x66000000)
+        });
     }
 
     /** 采样解码，避免超大图 OOM。 */

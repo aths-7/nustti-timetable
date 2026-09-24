@@ -3,14 +3,20 @@ package edu.nustti.timetable.ui;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
@@ -19,6 +25,7 @@ import java.util.List;
 
 import edu.nustti.timetable.R;
 import edu.nustti.timetable.api.Async;
+import edu.nustti.timetable.data.SessionStore;
 import edu.nustti.timetable.data.TimetableRepository;
 import edu.nustti.timetable.edu.JwglSession;
 import edu.nustti.timetable.model.TimetableResult;
@@ -42,11 +49,16 @@ public class MainActivity extends AppCompatActivity {
     private int week = 1;
     private ViewPager2 viewPager;
     private Toast currentToast;
+    /** toolbar 原始 layoutParams.height（首次 insets 分发时记录，避免多次分发重复累加）。 */
+    private int toolbarBaseHeight = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 边缘到边缘：内容延伸绘制到状态栏与系统导航栏区域，避免底部系统栏露出白色背景
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         setContentView(R.layout.activity_main);
+        applyWindowInsets();
 
         repository = new TimetableRepository(this);
         week = repository.store().getCurrentWeek();
@@ -54,6 +66,8 @@ public class MainActivity extends AppCompatActivity {
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         toolbar.setTitle(R.string.app_name);
+        // 应用用户自定义的顶部主题颜色（默认品牌蓝）
+        applyThemeColor();
         toolbar.inflateMenu(R.menu.main_menu);
         toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
             @Override
@@ -76,6 +90,31 @@ public class MainActivity extends AppCompatActivity {
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_REFRESH, false)) {
             refresh(false);
         }
+    }
+
+    /** 边缘到边缘 inset 适配：toolbar 整体加高（原始高度 + 状态栏）使蓝色背景覆盖状态栏、标题进入安全区；Dock 距底固定 30dp。 */
+    private void applyWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            Toolbar tb = findViewById(R.id.toolbar);
+            if (tb != null) {
+                ViewGroup.LayoutParams lp = tb.getLayoutParams();
+                if (toolbarBaseHeight < 0) {
+                    toolbarBaseHeight = lp.height;
+                }
+                lp.height = toolbarBaseHeight + bars.top;
+                tb.setLayoutParams(lp);
+                tb.setPadding(tb.getPaddingLeft(), bars.top, tb.getPaddingRight(),
+                        tb.getPaddingBottom());
+            }
+            DockBarView db = findViewById(R.id.dockBar);
+            if (db != null) {
+                int gap = Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 30f,
+                        getResources().getDisplayMetrics()));
+                db.setPadding(db.getPaddingLeft(), db.getPaddingTop(), db.getPaddingRight(), gap);
+            }
+            return insets;
+        });
     }
 
     private void bottomNavSetup() {
@@ -171,6 +210,15 @@ public class MainActivity extends AppCompatActivity {
                 ((TodayFragment) fragment).reloadBackground();
             }
         }
+    }
+
+    /** 应用用户自定义的顶部主题颜色到 toolbar（默认品牌蓝），设置页修改后调用即时生效。 */
+    public void applyThemeColor() {
+        Toolbar tb = findViewById(R.id.toolbar);
+        if (tb == null) {
+            return;
+        }
+        tb.setBackgroundColor(new SessionStore(this).getThemeColor());
     }
 
     public void refresh(boolean demo) {

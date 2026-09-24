@@ -13,6 +13,8 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import android.graphics.drawable.Drawable;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
@@ -98,6 +100,13 @@ public abstract class GridFragment extends Fragment implements MainActivity.Data
                 public void onNothingSelected(AdapterView<?> parent) {
                 }
             });
+        }
+
+        // 壁纸背景铺满整个 fragment（含底部系统栏区域）：根布局设置「壁纸+加深」Drawable，消除底部白色横条；
+        // 壁纸未启用时 background 为 null，保持 xml 默认背景不动
+        Drawable background = BackgroundManager.backgroundDrawable(requireContext());
+        if (background != null) {
+            view.setBackground(background);
         }
     }
 

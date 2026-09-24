@@ -5,8 +5,12 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,6 +18,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -196,6 +201,77 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         });
         updateBgStatus();
 
+        // 字体颜色：点击行弹出调色盘（HSV 选择器），选择后即时刷新周/今日视图
+        View rowFontColor = view.findViewById(R.id.rowFontColor);
+        final View vFontColorPreview = view.findViewById(R.id.vFontColorPreview);
+        updateColorPreview(vFontColorPreview, store.getCourseTextColor());
+        rowFontColor.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showColorPickerDialog("选择字体颜色", store.getCourseTextColor(),
+                        new ColorPickedListener() {
+                            @Override
+                            public void onPicked(int color) {
+                                store.setCourseTextColor(color);
+                                updateColorPreview(vFontColorPreview, color);
+                                main.notifyBackgroundChanged();
+                                toast("字体颜色已更新");
+                            }
+                        });
+            }
+        });
+
+        // 课程字体：默认 / 宋体 / 黑体 / 仿宋 / 楷体（持久化，即时刷新周/今日视图）
+        Spinner spFontFamily = view.findViewById(R.id.spFontFamily);
+        final String[] fontKeys = {
+                SessionStore.FONT_DEFAULT,
+                SessionStore.FONT_SERIF,
+                SessionStore.FONT_SANS,
+                SessionStore.FONT_FANGSONG,
+                SessionStore.FONT_KAITI
+        };
+        ArrayAdapter<String> fontAdapter = new ArrayAdapter<>(requireContext(),
+                android.R.layout.simple_spinner_item,
+                new String[]{"默认", "宋体", "黑体", "仿宋", "楷体"});
+        fontAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spFontFamily.setAdapter(fontAdapter);
+        spFontFamily.setSelection(indexOfString(fontKeys, store.getCourseFont()));
+        spFontFamily.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (fontKeys[position].equals(store.getCourseFont())) {
+                    return;
+                }
+                store.setCourseFont(fontKeys[position]);
+                main.notifyBackgroundChanged();
+                toast("课程字体已更新");
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+
+        // 顶部主题颜色：点击行弹出调色盘，选择后即时生效到 toolbar
+        View rowThemeColor = view.findViewById(R.id.rowThemeColor);
+        final View vThemeColorPreview = view.findViewById(R.id.vThemeColorPreview);
+        updateColorPreview(vThemeColorPreview, store.getThemeColor());
+        rowThemeColor.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showColorPickerDialog("选择顶部主题颜色", store.getThemeColor(),
+                        new ColorPickedListener() {
+                            @Override
+                            public void onPicked(int color) {
+                                store.setThemeColor(color);
+                                updateColorPreview(vThemeColorPreview, color);
+                                main.applyThemeColor();
+                                toast("顶部主题颜色已更新");
+                            }
+                        });
+            }
+        });
+
         // 课程块透明度：实时持久化并刷新周/今日视图，实现拖动即预览
         SeekBar sbBlockAlpha = view.findViewById(R.id.sbBlockAlpha);
         final TextView tvBlockAlpha = view.findViewById(R.id.tvBlockAlpha);
@@ -342,6 +418,104 @@ public class SettingsFragment extends Fragment implements MainActivity.DataListe
         String mode = BackgroundManager.MODE_CROP.equals(BackgroundManager.scaleMode(requireContext()))
                 ? "等比例裁切" : "拉伸铺满";
         tvBgStatus.setText(has ? "背景：已启用自定义背景（" + mode + "）" : "背景：默认（" + mode + "）");
+    }
+
+    /** 返回 target 在 values 中的下标；未命中返回 0（首个选项）。 */
+    private static int indexOfString(String[] values, String target) {
+        for (int i = 0; i < values.length; i++) {
+            if (values[i].equals(target)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    /** 更新设置页颜色预览块。 */
+    private void updateColorPreview(View preview, int color) {
+        if (preview.getBackground() instanceof GradientDrawable) {
+            ((GradientDrawable) preview.getBackground()).setColor(color);
+        }
+    }
+
+    /** 颜色选择回调。 */
+    private interface ColorPickedListener {
+        void onPicked(int color);
+    }
+
+    /** 调色盘对话框：HSV 三通道滑块 + 实时圆形预览，确定后回调。 */
+    private void showColorPickerDialog(String title, final int initialColor,
+                                       final ColorPickedListener listener) {
+        final float[] hsv = new float[3];
+        Color.colorToHSV(initialColor, hsv);
+
+        LinearLayout root = new LinearLayout(requireContext());
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(dp(20));
+        root.setPadding(pad, pad, pad, pad);
+
+        final View preview = new View(requireContext());
+        final GradientDrawable previewBg = new GradientDrawable();
+        previewBg.setShape(GradientDrawable.OVAL);
+        previewBg.setColor(initialColor);
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(Math.round(dp(64)),
+                Math.round(dp(64)));
+        pLp.gravity = Gravity.CENTER_HORIZONTAL;
+        preview.setLayoutParams(pLp);
+        preview.setBackground(previewBg);
+        root.addView(preview);
+
+        addHsvRow(root, "色相", 360, Math.round(hsv[0]), hsv, 0, previewBg);
+        addHsvRow(root, "饱和度", 100, Math.round(hsv[1] * 100f), hsv, 1, previewBg);
+        addHsvRow(root, "亮度", 100, Math.round(hsv[2] * 100f), hsv, 2, previewBg);
+
+        new AlertDialog.Builder(requireContext())
+                .setTitle(title)
+                .setView(root)
+                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        listener.onPicked(Color.HSVToColor(hsv));
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /** 调色盘一行：标签 + SeekBar，拖动实时更新 HSV 与预览。 */
+    private void addHsvRow(LinearLayout root, final String label, final int max,
+                           int progress, final float[] hsv, final int slot,
+                           final GradientDrawable previewBg) {
+        final TextView tv = new TextView(requireContext());
+        tv.setText(label + "：" + progress);
+        tv.setTextColor(0xFF333333);
+        tv.setTextSize(14);
+        root.addView(tv);
+
+        SeekBar sb = new SeekBar(requireContext());
+        sb.setMax(max);
+        sb.setProgress(progress);
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                hsv[slot] = max == 360 ? progress : progress / 100f;
+                previewBg.setColor(Color.HSVToColor(hsv));
+                tv.setText(label + "：" + progress);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        root.addView(sb);
+    }
+
+    private float dp(float value) {
+        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
+                getResources().getDisplayMetrics());
     }
 
     private String text(EditText editText) {

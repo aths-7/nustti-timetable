@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import edu.nustti.timetable.data.SessionStore;
 import edu.nustti.timetable.model.Course;
 import edu.nustti.timetable.model.TimetableResult;
 
@@ -126,6 +127,23 @@ public class WeekGridView extends View {
         bodyText.setShadowLayer(dp(1.5f), 0f, dp(1f), 0xB3000000);
 
         applyModeMetrics(scaled);
+        // 应用用户自定义的课程文字颜色 / 字体（默认白字 + 系统字体）
+        applyTextStyles();
+    }
+
+    /** 应用外观自定义：课程文字颜色（title/body）与字体（title/body/header/label），设置变更后调用以即时生效。 */
+    public void applyTextStyles() {
+        SessionStore store = new SessionStore(getContext());
+        int textColor = store.getCourseTextColor();
+        titleText.setColor(textColor);
+        bodyText.setColor(textColor);
+        android.graphics.Typeface typeface = store.courseTypeface();
+        titleText.setTypeface(typeface);
+        bodyText.setTypeface(typeface);
+        headerText.setTypeface(typeface);
+        labelText.setTypeface(typeface);
+        labelSubText.setTypeface(typeface);
+        invalidate();
     }
 
     // ------------------------------------------------------------------ //
@@ -152,6 +170,8 @@ public class WeekGridView extends View {
         }
         bgBitmap = BackgroundManager.loadBitmap(getContext());
         bgAttempted = true;
+        // 外观设置（字体颜色 / 字体）变化时一并刷新文字样式
+        applyTextStyles();
         invalidate();
     }
 
@@ -331,12 +351,11 @@ public class WeekGridView extends View {
                 bgAttempted = true;
             }
         }
-        drawBackground(canvas);
+        // 壁纸已改由 fragment 根布局绘制（BackgroundManager.backgroundDrawable），此处不再绘制，避免重叠构图割裂
         float labelW = labelW();
         float colW = colW();
         float rowH = rowH();
         float headerH = headerH();
-
         // 表头
         canvas.drawRect(0, 0, getWidth(), headerH, headerPaint);
         for (int i = 0; i < columns; i++) {

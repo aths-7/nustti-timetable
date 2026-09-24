@@ -1,23 +1,16 @@
 package edu.nustti.timetable.ui;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
-import android.graphics.RenderEffect;
-import android.graphics.Shader;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
-import android.os.Build;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewOutlineProvider;
-import android.view.ViewTreeObserver;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -33,9 +26,8 @@ import edu.nustti.timetable.R;
  *
  * <p>悬浮于内容之上的胶囊形导航条：水平居中、左右留边距，含整周 / 今日 / 设置三个图标。</p>
  *
- * <p>液态玻璃实现：API 31+ 使用 RenderEffect.createBlurEffect 对内容层做实时背景模糊
- * （通过 ViewTreeObserver.OnDrawListener 挂到根视图，内容每帧重绘时刷新快照），
- * 模糊之上叠加半透明白渐变、顶部高光与 1dp 细边框模拟折射；API 31 以下降级为半透明玻璃渐变。</p>
+ * <p>液态玻璃实现：半透明白渐变 + 顶部高光 + 1dp 细边框叠加在胶囊形圆角之上，
+ * 模拟液态玻璃折射高光（不使用实时背景模糊，避免与硬件加速渲染管线冲突）。</p>
  *
  * <p>交互：点击图标放大上浮（OvershootInterpolator 弹性）并切换页面，当前选中项高亮。</p>
  */
@@ -49,12 +41,7 @@ public class DockBarView extends FrameLayout {
     private static final int ITEM_COUNT = 3;
     private static final float CORNER_DP = 30f;
     private static final float HEIGHT_DP = 60f;
-    private static final float BLUR_RADIUS_PX = 22f;
 
-    /** 内容层（toolbar + viewpager 容器）id，用于截取实时背景快照。 */
-    private static final int CONTENT_HOST_ID = R.id.contentHost;
-
-    private View blurLayer;
     private View glassLayer;
     private LinearLayout contentRow;
     private final View[] itemViews = new View[ITEM_COUNT];
@@ -64,20 +51,6 @@ public class DockBarView extends FrameLayout {
 
     private int selectedIndex = 0;
     private OnDockItemSelectedListener listener;
-
-    private View captureSource;
-    private Bitmap snapshot;
-    private boolean capturing = false;
-    private final ViewTreeObserver.OnDrawListener onDrawListener = new ViewTreeObserver.OnDrawListener() {
-        @Override
-        public void onDraw() {
-            // 内容树每次绘制（滚动 / 切页 / 数据刷新）时刷新快照并重绘模糊层，实现实时背景模糊
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && blurLayer != null && !capturing) {
-                updateSnapshot();
-                postInvalidateOnAnimation();
-            }
-        }
-    };
 
     public DockBarView(Context context) {
         this(context, null);
@@ -89,7 +62,6 @@ public class DockBarView extends FrameLayout {
 
     public DockBarView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        setWillNotDraw(false);
         buildLayers(context);
     }
 
@@ -100,13 +72,7 @@ public class DockBarView extends FrameLayout {
     private void buildLayers(Context context) {
         float corner = dp(CORNER_DP);
 
-        // 1) 模糊层（API 31+ 实时背景模糊；低版本保持透明，由玻璃层兜底）
-        blurLayer = new View(context);
-        blurLayer.setClipToOutline(true);
-        blurLayer.setOutlineProvider(roundOutline(corner));
-        addView(blurLayer, matchParams());
-
-        // 2) 玻璃层：半透明白渐变 + 顶部高光 + 1dp 细边框，模拟液态玻璃折射高光
+        // 玻璃层：半透明白渐变 + 顶部高光 + 1dp 细边框，模拟液态玻璃折射高光
         glassLayer = new View(context);
         glassLayer.setClipToOutline(true);
         glassLayer.setOutlineProvider(roundOutline(corner));
@@ -118,9 +84,11 @@ public class DockBarView extends FrameLayout {
                 new int[]{0x80FFFFFF, 0x00FFFFFF});
         highlight.setCornerRadii(new float[]{corner, corner, corner, corner, 0f, 0f, 0f, 0f});
         glassLayer.setBackground(new LayerDrawable(new Drawable[]{glassBase, highlight}));
-        addView(glassLayer, matchParams());
+        // 固定高度覆盖内容行区域（宽铺满，高 = HEIGHT_DP + 内容行 topMargin），
+        // 严禁 MATCH_PARENT×MATCH_PARENT：DockBarView 高度为 wrap_content 时会被撑成全屏
+        addView(glassLayer, fixedGlassParams());
 
-        // 3) 内容行：三个图标（整周 / 今日 / 设置）
+        // 内容行：三个图标（整周 / 今日 / 设置）
         contentRow = new LinearLayout(context);
         contentRow.setOrientation(LinearLayout.HORIZONTAL);
         contentRow.setGravity(Gravity.CENTER);
@@ -205,9 +173,10 @@ public class DockBarView extends FrameLayout {
         };
     }
 
-    private FrameLayout.LayoutParams matchParams() {
+    private FrameLayout.LayoutParams fixedGlassParams() {
         return new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                (int) dp(HEIGHT_DP) + (int) dp(2));
     }
 
     // ------------------------------------------------------------------ //
@@ -288,81 +257,8 @@ public class DockBarView extends FrameLayout {
     }
 
     // ------------------------------------------------------------------ //
-    // 实时背景模糊
+    // 尺寸
     // ------------------------------------------------------------------ //
-
-    @Override
-    protected void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        View root = getRootView();
-        if (root != null) {
-            root.getViewTreeObserver().addOnDrawListener(onDrawListener);
-        }
-        // 内容容器延迟一帧就绪后注入（同一布局树的 contentHost）
-        post(new Runnable() {
-            @Override
-            public void run() {
-                View parent = (View) getParent();
-                if (parent != null) {
-                    captureSource = parent.findViewById(CONTENT_HOST_ID);
-                }
-            }
-        });
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            blurLayer.setRenderEffect(RenderEffect.createBlurEffect(
-                    BLUR_RADIUS_PX, BLUR_RADIUS_PX, Shader.TileMode.CLAMP));
-        }
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        View root = getRootView();
-        if (root != null) {
-            root.getViewTreeObserver().removeOnDrawListener(onDrawListener);
-        }
-    }
-
-    /** 截取导航条遮挡区域的内容快照（内容层坐标系对齐），作为模糊层背景。 */
-    private void updateSnapshot() {
-        View source = captureSource;
-        if (source == null || getWidth() <= 0 || getHeight() <= 0) {
-            return;
-        }
-        int[] loc = new int[2];
-        int[] srcLoc = new int[2];
-        getLocationOnScreen(loc);
-        source.getLocationOnScreen(srcLoc);
-        int left = loc[0] - srcLoc[0];
-        int top = loc[1] - srcLoc[1];
-        int w = getWidth();
-        int h = getHeight();
-        if (snapshot == null || snapshot.getWidth() != w || snapshot.getHeight() != h) {
-            if (snapshot != null) {
-                snapshot.recycle();
-            }
-            snapshot = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        }
-        capturing = true;
-        try {
-            Canvas canvas = new Canvas(snapshot);
-            canvas.translate(-left, -top);
-            source.draw(canvas);
-        } finally {
-            capturing = false;
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            blurLayer.setBackground(new BitmapDrawable(getResources(), snapshot));
-        }
-    }
-
-    @Override
-    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-        super.onSizeChanged(w, h, oldw, oldh);
-        if (w > 0 && h > 0 && captureSource != null) {
-            updateSnapshot();
-        }
-    }
 
     private float dp(float value) {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,

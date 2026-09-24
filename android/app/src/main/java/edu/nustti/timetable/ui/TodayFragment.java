@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 
 import edu.nustti.timetable.R;
+import edu.nustti.timetable.data.SessionStore;
 import edu.nustti.timetable.model.Course;
 import edu.nustti.timetable.model.TimetableResult;
 
@@ -196,8 +197,15 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
         TextView name = new TextView(requireContext());
         name.setText(course.name == null || course.name.isEmpty() ? "未命名课程" : course.name);
         name.setTextSize(16f);
-        name.setTextColor(0xFF1B3A6B);
-        name.setTypeface(name.getTypeface(), android.graphics.Typeface.BOLD);
+        // 课程名应用用户自定义的字体颜色与字体；浅色卡片上默认白字不可读，未显式设置时回退深蓝
+        SessionStore store = new SessionStore(requireContext());
+        int textColor = store.getCourseTextColor();
+        if (textColor == SessionStore.DEFAULT_COURSE_TEXT_COLOR) {
+            textColor = 0xFF1B3A6B;
+        }
+        name.setTextColor(textColor);
+        android.graphics.Typeface tf = store.courseTypeface();
+        name.setTypeface(tf == null ? name.getTypeface() : tf, android.graphics.Typeface.BOLD);
         box.addView(name);
 
         String timeRange = data == null ? "" : data.sessionTime(course.startSession());
