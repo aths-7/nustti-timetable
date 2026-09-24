@@ -1,28 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface"
-    android:orientation="vertical">
+    android:background="@color/surface">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
+    <LinearLayout
+        android:id="@+id/contentHost"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="@color/brand"
-        app:title="@string/app_name"
-        app:titleTextColor="@color/white" />
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-    <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/viewPager"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/brand"
+            app:title="@string/app_name"
+            app:titleTextColor="@color/white" />
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottomNav"
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/viewPager"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- 苹果 Dock 样式液态玻璃导航栏：悬浮内容之上、水平居中、左右留边距 -->
+    <edu.nustti.timetable.ui.DockBarView
+        android:id="@+id/dockBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:menu="@menu/main_nav" />
-</LinearLayout>
+        android:layout_gravity="bottom|center_horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="14dp" />
+</FrameLayout>

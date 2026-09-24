@@ -15,8 +15,6 @@ import androidx.fragment.app.Fragment;
 import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
-import com.google.android.material.bottomnavigation.BottomNavigationView;
-
 import java.util.List;
 
 import edu.nustti.timetable.R;
@@ -82,7 +80,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void bottomNavSetup() {
         viewPager = findViewById(R.id.viewPager);
-        final BottomNavigationView bottomNav = findViewById(R.id.bottomNav);
+        final DockBarView dockBar = findViewById(R.id.dockBar);
 
         viewPager.setAdapter(new FragmentStateAdapter(this) {
             @NonNull
@@ -107,21 +105,14 @@ public class MainActivity extends AppCompatActivity {
         viewPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {
-                bottomNav.getMenu().getItem(position).setChecked(true);
+                dockBar.setSelectedIndex(position);
             }
         });
-        bottomNav.setOnItemSelectedListener(new BottomNavigationView.OnItemSelectedListener() {
+        // 苹果 Dock 样式液态玻璃导航栏：点击图标弹性放大上浮并切换页面
+        dockBar.setOnDockItemSelectedListener(new DockBarView.OnDockItemSelectedListener() {
             @Override
-            public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-                int id = item.getItemId();
-                if (id == R.id.nav_week) {
-                    viewPager.setCurrentItem(0, true);
-                } else if (id == R.id.nav_today) {
-                    viewPager.setCurrentItem(1, true);
-                } else if (id == R.id.nav_settings) {
-                    viewPager.setCurrentItem(2, true);
-                }
-                return true;
+            public void onDockItemSelected(int position) {
+                viewPager.setCurrentItem(position, true);
             }
         });
     }
