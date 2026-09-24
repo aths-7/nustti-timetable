@@ -79,6 +79,15 @@ jobs:
             echo "  \"time_utc\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
             echo "}"
           } > "$OUT/build-status.json"
+          {
+            echo "{"
+            echo "  \"versionName\": \"$VER\","
+            echo "  \"versionCode\": $(grep -oP 'versionCode \K[0-9]+' android/app/build.gradle | head -1),"
+            echo "  \"apkFileName\": \"nustti_timetable-${VER}-debug.apk\","
+            echo "  \"sha\": \"$GITHUB_SHA\","
+            echo "  \"releaseNotes\": $(git log -1 --pretty=%s | jq -Rs .)"
+            echo "}"
+          } > "$OUT/version.json"
           ls -lh "$OUT"
           cd "$OUT"
           git init -q
