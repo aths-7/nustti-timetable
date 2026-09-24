@@ -21,21 +21,21 @@ import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
 /**
- * 顶部悬浮玻璃标题栏（与右上角三点容器、底部 Dock 统一为同一圆润悬浮玻璃语言）。
+ * 顶部悬浮玻璃标题栏（与右上角三点容器统一为方形圆角悬浮玻璃语言）。
  *
  * <p>不再绘制整条玻璃背景：标题栏整体透明，露出沉浸式壁纸；仅保留两个<strong>独立悬浮
- * 玻璃容器</strong>——左侧「南泰科课表」标题容器（浅灰半透明、柔和圆角、无边框、柔和阴影、
- * 弱主题色氛围 tint）与右侧三点圆形玻璃按钮，二者与底部 Dock 观感完全一致。</p>
+ * 玻璃容器</strong>——左侧「南泰科课表」标题容器（方角矩形 + 中等圆角、浅灰半透明、
+ * 柔和阴影、弱主题色氛围 tint）与右侧三点方形圆角玻璃按钮，半透明玻璃质感与柔和阴影一致。</p>
  *
- * <p>内部布局：左侧标题独立容器（白字 + 柔和投影 + 主题色氛围），右侧独立的<strong>圆形</strong>
+ * <p>内部布局：左侧标题独立容器（白字 + 柔和投影 + 主题色氛围），右侧独立的<strong>方形圆角</strong>
  * 三点菜单按钮，点击行为由外部绑定。</p>
  */
 public class GlassToolbarView extends FrameLayout {
 
-    private static final float TITLE_CORNER_DP = 18f;
+    private static final float TITLE_CORNER_DP = 14f; // 方形 + 中等圆角
     private static final float TITLE_SIZE_SP = 18f;
     private static final float MENU_BTN_DP = 40f;
-    private static final float MENU_CORNER_DP = 20f; // 40dp 容器圆角 20dp = 圆形
+    private static final float MENU_CORNER_DP = 14f;  // 方形 + 中等圆角（非圆形）
 
     /** 三处容器统一使用的浅灰半透明玻璃底色（与 Dock GlassLayerView 同族）。 */
     private static final int GLASS_BASE = 0x59D8DCE0;
@@ -90,7 +90,7 @@ public class GlassToolbarView extends FrameLayout {
         tlp.setMargins((int) dp(16f), (int) dp(6f), (int) dp(16f), (int) dp(6f));
         titleContainer.addView(titleView, tlp);
 
-        // 右侧独立圆形悬浮玻璃按钮（三个点菜单），与底部 Dock 同一玻璃语言
+        // 右侧独立方形圆角悬浮玻璃按钮（三个点菜单），与左侧标题容器同一玻璃语言
         menuButton = new FrameLayout(context);
         menuButton.setClickable(true);
         menuButton.setFocusable(true);
@@ -152,7 +152,7 @@ public class GlassToolbarView extends FrameLayout {
         }
     }
 
-    /** 三个点菜单按钮（独立圆形悬浮玻璃容器），点击行为由外部绑定。 */
+    /** 三个点菜单按钮（独立方形圆角悬浮玻璃容器），点击行为由外部绑定。 */
     public View getMenuButton() {
         return menuButton;
     }

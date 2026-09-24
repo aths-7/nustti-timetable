@@ -9,13 +9,16 @@ import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
@@ -28,12 +31,16 @@ import androidx.annotation.Nullable;
 import edu.nustti.timetable.R;
 
 /**
- * 苹果 Dock 风格液态玻璃导航栏。
+ * 底部 Dock 导航栏（真实高斯模糊毛玻璃版）。
  *
  * <p>悬浮于内容之上的胶囊形导航条：水平居中、左右留边距，含整周 / 今日 / 设置三个图标。</p>
  *
- * <p>液态玻璃实现：半透明白渐变 + 顶部高光 + 1dp 细边框叠加在胶囊形圆角之上，
- * 模拟液态玻璃折射高光（不使用实时背景模糊，避免与硬件加速渲染管线冲突）。</p>
+ * <p>毛玻璃实现（Android 12+）：不再自绘模拟玻璃，改为「壁纸区域裁剪位图 +
+ * {@link RenderEffect#createBlurEffect} 真实高斯模糊 + 半透明灰白雾面」三层叠加。
+ * 模糊源仅取静态壁纸（BackgroundManager）在 Dock 区域对应的片段，事件驱动刷新
+ * （背景变化 / 自身尺寸变化时各重建一次），<strong>严禁</strong>使用
+ * ViewTreeObserver.OnDrawListener + 每帧截屏 + RenderEffect 组合（会与硬件加速冲突，
+ * 导致整页模糊穿透与无限重绘）。低版本（API &lt; 31）降级为半透明灰白渐变静态玻璃。</p>
  *
  * <p>交互：点击图标放大上浮（OvershootInterpolator 弹性）并切换页面，当前选中项高亮。</p>
  */
@@ -47,8 +54,10 @@ public class DockBarView extends FrameLayout {
     private static final int ITEM_COUNT = 3;
     private static final float CORNER_DP = 30f;
     private static final float HEIGHT_DP = 60f;
+    /** 真实高斯模糊半径（dp），可按观感调整（12~20dp 均合适）。 */
+    private static final float BLUR_RADIUS_DP = 16f;
 
-    private View glassLayer;
+    private BlurBackgroundView blurLayer;
     private LinearLayout contentRow;
     private final View[] itemViews = new View[ITEM_COUNT];
     private final ImageView[] itemIcons = new ImageView[ITEM_COUNT];
@@ -57,6 +66,10 @@ public class DockBarView extends FrameLayout {
 
     private int selectedIndex = 0;
     private OnDockItemSelectedListener listener;
+
+    /** 全屏壁纸快照（与窗口根背景同一 Drawable 绘制结果），用于按 Dock 区域裁剪模糊源。 */
+    private Bitmap fullWallpaper;
+    private boolean blurInitialized = false;
 
     public DockBarView(Context context) {
         this(context, null);
@@ -78,9 +91,15 @@ public class DockBarView extends FrameLayout {
     private void buildLayers(Context context) {
         float corner = dp(CORNER_DP);
 
-        // 玻璃层：液态玻璃自绘层（多层阴影 + 双实线边框 + 内部光晕 + 对比度滤镜）
-        glassLayer = new GlassLayerView(context, corner);
-        addView(glassLayer, fixedGlassParams());
+        // 模糊背景层：真实高斯模糊毛玻璃（壁纸区域裁剪 + RenderEffect 模糊 + 半透明雾面）
+        blurLayer = new BlurBackgroundView(context, corner);
+        FrameLayout.LayoutParams blurLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                (int) dp(HEIGHT_DP) + (int) dp(2) + (int) dp(14));
+        blurLp.leftMargin = (int) dp(8);
+        blurLp.rightMargin = (int) dp(8);
+        blurLp.topMargin = (int) dp(3);
+        addView(blurLayer, blurLp);
 
         // 内容行：三个图标（整周 / 今日 / 设置）
         contentRow = new LinearLayout(context);
@@ -99,11 +118,6 @@ public class DockBarView extends FrameLayout {
             contentRow.addView(item);
         }
         addView(contentRow);
-
-        // 阴影：胶囊形轮廓 + elevation（调低，外阴影主要由自绘层提供）
-        setElevation(dp(8));
-        setOutlineProvider(roundOutline(corner));
-        setClipToOutline(false);
 
         updateItems(false);
     }
@@ -167,13 +181,6 @@ public class DockBarView extends FrameLayout {
         };
     }
 
-    private FrameLayout.LayoutParams fixedGlassParams() {
-        // 高度 = 玻璃主体(HEIGHT_DP + topMargin) + 底部阴影留白；宽铺满，左右阴影靠主体 inset 留出
-        return new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                (int) dp(HEIGHT_DP) + (int) dp(2) + (int) dp(14));
-    }
-
     // ------------------------------------------------------------------ //
     // 对外接口
     // ------------------------------------------------------------------ //
@@ -202,6 +209,24 @@ public class DockBarView extends FrameLayout {
             listener.onDockItemSelected(index);
         }
         updateItems(animate);
+    }
+
+    /**
+     * 事件驱动刷新模糊背景：宿主在壁纸/背景变化时调用一次（如
+     * {@link MainActivity#notifyBackgroundChanged()}），重新取壁纸快照并按当前
+     * Dock 位置裁剪模糊源。<strong>严禁</strong>每帧调用或挂 OnDrawListener。
+     */
+    public void refreshBlurBackground() {
+        blurInitialized = true;
+        Bitmap fresh = buildFullWallpaper();
+        if (fresh != null) {
+            Bitmap old = fullWallpaper;
+            fullWallpaper = fresh;
+            if (old != null && old != fresh) {
+                old.recycle();
+            }
+        }
+        rebuildBlurRegion();
     }
 
     // ------------------------------------------------------------------ //
@@ -252,6 +277,80 @@ public class DockBarView extends FrameLayout {
     }
 
     // ------------------------------------------------------------------ //
+    // 模糊背景构建（事件驱动，禁止每帧截屏）
+    // ------------------------------------------------------------------ //
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        if (w <= 0 || h <= 0) {
+            return;
+        }
+        if (!blurInitialized) {
+            // 首次布局完成：若已启用壁纸则初始化模糊源；未启用时保持纯雾面降级
+            blurInitialized = true;
+            refreshBlurBackground();
+        } else {
+            // 尺寸（如 insets 变化）后 Dock 位置变化，重建裁剪区域
+            rebuildBlurRegion();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        if (fullWallpaper != null) {
+            fullWallpaper.recycle();
+            fullWallpaper = null;
+        }
+        blurLayer.clearRegionBitmap();
+    }
+
+    /** 将「壁纸 + 加深遮罩」根背景绘制为全屏位图（与 android.R.id.content 同尺寸同坐标）。 */
+    private Bitmap buildFullWallpaper() {
+        Drawable d = BackgroundManager.backgroundDrawable(getContext());
+        if (d == null) {
+            return null;
+        }
+        ViewGroup parent = (ViewGroup) getParent();
+        int w = parent != null ? parent.getWidth() : getWidth();
+        int h = parent != null ? parent.getHeight() : getHeight();
+        if (w <= 0 || h <= 0) {
+            return null;
+        }
+        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        d.setBounds(0, 0, w, h);
+        d.draw(c);
+        return bmp;
+    }
+
+    /** 按 blurLayer 在窗口中的位置，从全屏壁纸快照裁剪出 Dock 区域的模糊源。 */
+    private void rebuildBlurRegion() {
+        if (blurLayer == null) {
+            return;
+        }
+        if (fullWallpaper == null || fullWallpaper.isRecycled()
+                || blurLayer.getWidth() <= 0 || blurLayer.getHeight() <= 0) {
+            blurLayer.clearRegionBitmap();
+            return;
+        }
+        int[] loc = new int[2];
+        blurLayer.getLocationInWindow(loc);
+        int left = Math.max(0, loc[0]);
+        int top = Math.max(0, loc[1]);
+        int right = Math.min(fullWallpaper.getWidth(), left + blurLayer.getWidth());
+        int bottom = Math.min(fullWallpaper.getHeight(), top + blurLayer.getHeight());
+        if (right <= left || bottom <= top) {
+            blurLayer.clearRegionBitmap();
+            return;
+        }
+        Bitmap region = Bitmap.createBitmap(fullWallpaper, left, top,
+                right - left, bottom - top);
+        blurLayer.setRegionBitmap(region);
+    }
+
+    // ------------------------------------------------------------------ //
     // 尺寸
     // ------------------------------------------------------------------ //
 
@@ -261,70 +360,89 @@ public class DockBarView extends FrameLayout {
     }
 
     // ------------------------------------------------------------------ //
-    // 液态玻璃自绘层
+    // 真实高斯模糊背景层
     // ------------------------------------------------------------------ //
 
     /**
-     * 圆润悬浮玻璃自绘层（软件层渲染以启用 Paint.setShadowLayer 对图形绘制支持）：
-     * <ol>
-     *   <li>柔和外阴影：远投影 + 近投影两层叠加，形成柔和悬浮感；</li>
-     *   <li>玻璃底：浅灰半透明磨砂渐变（与右上角三点容器同一玻璃语言），无边框；</li>
-     *   <li>顶部柔和高光：弱化后的渐变高光提升玻璃质感。</li>
-     * </ol>
+     * 毛玻璃背景层：绘制「壁纸 Dock 区域裁剪位图 + 半透明灰白雾面」。
+     *
+     * <p>Android 12+（API 31）在构造时对自身设置
+     * {@link RenderEffect#createBlurEffect}，整层渲染输出经 GPU 真实高斯模糊，
+     * 即呈现对背后壁纸内容的毛玻璃效果；位图边缘由 outline + clipToOutline 裁为
+     * 胶囊圆角。低版本不支持 RenderEffect 时降级为静态半透明玻璃渐变。</p>
+     *
+     * <p><strong>注意</strong>：本层必须走硬件加速渲染（严禁 setLayerType(SOFTWARE)），
+     * RenderEffect 依赖硬件渲染管线。</p>
      */
-    private static class GlassLayerView extends View {
+    private static class BlurBackgroundView extends View {
 
-        private final float corner;
         private final float density;
-        private final RectF body = new RectF();
+        private final Paint fogPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private Bitmap regionBitmap;
 
-        private final Paint shadowOuter = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint shadowSoft = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        GlassLayerView(Context context, float corner) {
+        BlurBackgroundView(Context context, float corner) {
             super(context);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            this.corner = corner;
-            density = getResources().getDisplayMetrics().density;
+            density = context.getResources().getDisplayMetrics().density;
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), corner);
+                }
+            });
+            setClipToOutline(true);
+            // 柔和系统阴影（RenderThread 绘制，可跨 bounds，为阴影预留底部留白）
+            setElevation(dp(8));
 
-            // 1) 柔和阴影：远投影 + 近投影（fill 透明只留阴影）
-            shadowOuter.setShadowLayer(dp(14f), 0f, dp(6f), 0x26000000);
-            shadowOuter.setColor(0x00000000);
-            shadowSoft.setShadowLayer(dp(8f), 0f, dp(3f), 0x1F000000);
-            shadowSoft.setColor(0x00000000);
+            // 半透明灰白雾面：与顶部悬浮玻璃容器同一玻璃语言，营造毛玻璃质感
+            fogPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(HEIGHT_DP + 2f),
+                    new int[]{0x66D8DCE0, 0x59D8DCE0}, null, Shader.TileMode.CLAMP));
 
-            // 2) 浅灰半透明磨砂渐变底（无边框，柔和圆角）
-            glassPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(HEIGHT_DP + 2f),
-                    new int[]{0x99D8DCE0, 0x59D8DCE0}, null, Shader.TileMode.CLAMP));
-
-            // 3) 柔和顶部高光
-            highlightPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(30f),
-                    new int[]{0x40FFFFFF, 0x00FFFFFF}, null, Shader.TileMode.CLAMP));
+            // 真实高斯模糊：API 31+ 对整层渲染输出做 GPU 模糊
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setRenderEffect(RenderEffect.createBlurEffect(dp(BLUR_RADIUS_DP),
+                        dp(BLUR_RADIUS_DP), Shader.TileMode.CLAMP));
+            }
         }
 
         private float dp(float v) {
             return v * density;
         }
 
+        void setRegionBitmap(Bitmap bmp) {
+            if (regionBitmap == bmp) {
+                return;
+            }
+            if (regionBitmap != null && regionBitmap != bmp) {
+                regionBitmap.recycle();
+            }
+            regionBitmap = bmp;
+            invalidate();
+        }
+
+        void clearRegionBitmap() {
+            if (regionBitmap != null) {
+                regionBitmap.recycle();
+                regionBitmap = null;
+                invalidate();
+            }
+        }
+
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             float w = getWidth();
-            // 玻璃主体：左右留白供阴影溢出，顶部 3dp 起，与内容行对齐
-            body.set(dp(8f), dp(3f), w - dp(8f), dp(3f) + dp(HEIGHT_DP + 2f));
-
-            // 1) 柔和阴影（远投影 + 近投影）
-            canvas.drawRoundRect(body, corner, corner, shadowOuter);
-            canvas.drawRoundRect(body, corner, corner, shadowSoft);
-
-            // 2) 浅灰半透明磨砂渐变底（无边框）
-            canvas.drawRoundRect(body, corner, corner, glassPaint);
-
-            // 3) 柔和顶部高光
-            RectF top = new RectF(body.left, body.top, body.right, body.top + dp(30f));
-            canvas.drawRoundRect(top, corner, corner, highlightPaint);
+            float h = getHeight();
+            if (w <= 0 || h <= 0) {
+                return;
+            }
+            // 1) 壁纸 Dock 区域片段（RenderEffect 已对整层输出做真实高斯模糊）
+            if (regionBitmap != null && !regionBitmap.isRecycled()) {
+                Rect src = new Rect(0, 0, regionBitmap.getWidth(), regionBitmap.getHeight());
+                RectF dst = new RectF(0f, 0f, w, h);
+                canvas.drawBitmap(regionBitmap, src, dst, null);
+            }
+            // 2) 半透明灰白雾面（低版本降级时提供静态玻璃观感）
+            canvas.drawRect(0f, 0f, w, h, fogPaint);
         }
     }
 

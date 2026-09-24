@@ -215,9 +215,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 自定义背景变化后通知周视图 / 今日页重新加载背景。 */
+    /** 自定义背景变化后通知周视图 / 今日页重新加载背景，并事件驱动刷新 Dock 毛玻璃模糊源。 */
     public void notifyBackgroundChanged() {
         applyWindowBackground();
+        DockBarView dockBar = findViewById(R.id.dockBar);
+        if (dockBar != null) {
+            dockBar.refreshBlurBackground();
+        }
         List<Fragment> fragments = getSupportFragmentManager().getFragments();
         for (Fragment fragment : fragments) {
             if (fragment instanceof WeekFragment) {
