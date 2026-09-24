@@ -19,11 +19,19 @@ android {
         applicationId "edu.nustti.timetable"
         minSdk 24
         targetSdk 35
-        versionCode 7
-        versionName "2.1.4"
+        versionCode 8
+        versionName "2.1.5"
     }
 
     signingConfigs {
+        debug {
+            // 项目固定 debug 签名：keystore 入库（android/keystore/nustti-debug.keystore），口令在 gradle.properties，
+            // 本地与 CI 共用同一签名，解决每次安装“与已应用签名不同”(-7)
+            storeFile file("keystore/nustti-debug.keystore")
+            storePassword NUSTTI_DEBUG_STORE_PASSWORD
+            keyAlias NUSTTI_DEBUG_KEY_ALIAS
+            keyPassword NUSTTI_DEBUG_KEY_PASSWORD
+        }
         release {
             if (keystorePropsFile.exists()) {
                 storeFile file(keystoreProps['storeFile'])
@@ -37,6 +45,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ""
+            signingConfig signingConfigs.debug
         }
         release {
             minifyEnabled false

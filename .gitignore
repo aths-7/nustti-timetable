@@ -10,8 +10,9 @@ captures/
 *.aab
 *.idsig
 
-# ---- 签名密钥（严禁入库）----
+# ---- 签名密钥（严禁入库；例外：android/keystore/nustti-debug.keystore 为 debug 专用固定签名，需入库供本地与 CI 共用）----
 *.keystore
+!android/keystore/nustti-debug.keystore
 *.jks
 
 # ---- Java / Maven 构建产物 ----

@@ -67,7 +67,9 @@ public class WeekGridView extends View {
     private final List<RectF> hitRects = new ArrayList<>();
     private final List<Course> hitCourses = new ArrayList<>();
 
-    /** 同格课程分组：key = weekday:startSession，value = 该格全部课程（当前周可见）。 */
+    /** 同格课程分组：key = weekday:startSession-endSession（完整节次区间），value = 该格全部课程（当前周可见）。
+     *  仅节次区间完全相同的课程才视为“同格多课”（默认显示一门+点击自选）；
+     *  若只按 startSession 分组，会把“同起始节但不同结束节”的课程（如 1-2 节与 1-4 节）误合并，导致整块课程缺失。 */
     private final Map<String, List<Course>> slotGroups = new LinkedHashMap<>();
     /** 每个格子当前显示课程的 key（Course.key()），无持久化记录时取组内第一门。 */
     private final Map<String, String> slotPicks = new LinkedHashMap<>();
@@ -188,7 +190,7 @@ public class WeekGridView extends View {
                 }
                 if (c.inWeek(this.week)) {
                     courses.add(c);
-                    String key = c.weekday + ":" + c.startSession();
+                    String key = c.weekday + ":" + c.startSession() + "-" + c.endSession();
                     List<Course> group = slotGroups.get(key);
                     if (group == null) {
                         group = new ArrayList<>();
