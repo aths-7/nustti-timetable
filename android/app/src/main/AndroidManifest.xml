@@ -32,6 +32,21 @@
             android:name=".ui.AboutActivity"
             android:exported="false"
             android:label="关于与更新" />
+
+        <activity
+            android:name=".ui.AppearanceActivity"
+            android:exported="false"
+            android:label="外观" />
+
+        <activity
+            android:name=".ui.CacheActivity"
+            android:exported="false"
+            android:label="本地缓存" />
+
+        <activity
+            android:name=".ui.DataSourceActivity"
+            android:exported="false"
+            android:label="数据来源" />
     </application>
 
 </manifest>

@@ -57,12 +57,20 @@ public class MainActivity extends AppCompatActivity {
     /** toolbar 原始 layoutParams.height（首次 insets 分发时记录，避免多次分发重复累加）。 */
     private int toolbarBaseHeight = -1;
 
+    /** 当前主界面实例：设置页独立详情页修改后经此回调刷新背景与主题色。 */
+    private static MainActivity sInstance;
+
+    public static MainActivity instance() {
+        return sInstance;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         // 边缘到边缘：内容延伸绘制到状态栏与系统导航栏区域，避免底部系统栏露出白色背景
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         setContentView(R.layout.activity_main);
+        sInstance = this;
         applyWindowBackground();
         applyWindowInsets();
 
@@ -451,5 +459,13 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
         return true;
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (sInstance == this) {
+            sInstance = null;
+        }
+        super.onDestroy();
     }
 }
