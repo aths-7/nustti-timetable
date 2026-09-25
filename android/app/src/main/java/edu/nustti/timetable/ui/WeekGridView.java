@@ -21,6 +21,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,7 +105,8 @@ public class WeekGridView extends View {
         linePaint.setStrokeWidth(dp(1));
         linePaint.setColor(Color.parseColor("#D8DEE9"));
 
-        headerPaint.setColor(Color.parseColor("#EEF2FF"));
+        // 星期标签栏背景：与课表主体一致改为暗色半透明玻璃（透出窗口根壁纸+0x66000000 遮罩）
+        headerPaint.setColor(0x66000000);
 
         blockPaint.setStyle(Paint.Style.FILL);
 
@@ -366,7 +368,8 @@ public class WeekGridView extends View {
                 canvas.drawRect(labelW + i * colW, 0, labelW + (i + 1) * colW, headerH, highlight);
                 headerText.setColor(Color.WHITE);
             } else {
-                headerText.setColor(Color.parseColor("#1E293B"));
+                // 深色半透明底上改用浅色文字保证可读，与课程块文字同色系
+                headerText.setColor(Color.parseColor("#F1F5F9"));
             }
             float baseline = headerH / 2f - (headerText.descent() + headerText.ascent()) / 2f;
             canvas.drawText(WEEKDAY_NAMES[i], cx, baseline, headerText);
@@ -395,7 +398,8 @@ public class WeekGridView extends View {
         }
         for (int r = 0; r <= rows; r++) {
             float y = headerH + r * rowH;
-            canvas.drawLine(0, y, labelW + columns * colW, y, linePaint);
+            // 有课的课程块中间隐去横条（课程块跨过该边界线时按块宽断开），无课区域保留横线
+            drawGridLineWithGaps(canvas, y, r);
         }
 
         // 课程块：块宽为列宽一半（水平居中），竖向高度不变；同格多课仅绘制当前显示的那一门
@@ -430,6 +434,49 @@ public class WeekGridView extends View {
             hitCourses.add(display);
             hitSlotKeys.add(slotKey);
             hitSlotSizes.add(group.size());
+        }
+    }
+
+    /** 绘制一条横向网格线；课程块跨过该边界线（有课）时，其水平区间内的横条隐去，其余（无课）区域正常显示。 */
+    private void drawGridLineWithGaps(Canvas canvas, float y, int boundaryIndex) {
+        float lineEnd = labelW() + columns * colW();
+        List<float[]> gaps = new ArrayList<>();
+        for (Map.Entry<String, List<Course>> entry : slotGroups.entrySet()) {
+            List<Course> group = entry.getValue();
+            if (group.isEmpty()) {
+                continue;
+            }
+            String displayKey = slotPicks.get(entry.getKey());
+            Course display = group.get(0);
+            for (Course c : group) {
+                if (c.key().equals(displayKey)) {
+                    display = c;
+                    break;
+                }
+            }
+            int start = Math.max(1, Math.min(rows, display.startSession()));
+            int end = Math.max(start, Math.min(rows, display.endSession()));
+            // 仅当课程块跨越该行边界（课程横跨 boundaryIndex 与 boundaryIndex+1 节）时隐去块内横条
+            if (start <= boundaryIndex && end >= boundaryIndex + 1) {
+                float cellLeft = labelW() + (display.weekday - 1) * colW();
+                float blockW = colW() - dp(8);
+                float left = cellLeft + (colW() - blockW) / 2f;
+                gaps.add(new float[]{left, left + blockW});
+            }
+        }
+        Collections.sort(gaps, (a, b) -> Float.compare(a[0], b[0]));
+        float cursor = 0f;
+        for (float[] gap : gaps) {
+            if (gap[1] <= cursor) {
+                continue;
+            }
+            if (gap[0] > cursor) {
+                canvas.drawLine(cursor, y, gap[0], y, linePaint);
+            }
+            cursor = gap[1];
+        }
+        if (cursor < lineEnd) {
+            canvas.drawLine(cursor, y, lineEnd, y, linePaint);
         }
     }
 

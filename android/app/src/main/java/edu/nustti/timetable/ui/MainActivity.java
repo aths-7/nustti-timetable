@@ -263,7 +263,9 @@ public class MainActivity extends AppCompatActivity {
         if (bg != null) {
             content.setBackground(bg);
         } else {
-            content.setBackgroundResource(R.color.surface);
+            // 壁纸未启用/加载失败时兜底为深色（原为纯白 surface，edge-to-edge 下
+            // 会在 Dock 未覆盖区透出横贯全屏白条）；深色与 Dock 玻璃衔接、登录页等不受影响
+            content.setBackgroundResource(R.color.brand_dark);
         }
     }
 

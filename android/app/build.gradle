@@ -12,21 +12,20 @@ if (keystorePropsFile.exists()) {
 android {
     namespace 'edu.nustti.timetable'
     compileSdk 35
-    // 本机 SDK 只装了 35.0.1 / 36.0.0 / 37.0.0，显式指定，避免 AGP 默认去找 34.0.0
+    // 本机 SDK 只装�?35.0.1 / 36.0.0 / 37.0.0，显式指定，避免 AGP 默认去找 34.0.0
     buildToolsVersion '35.0.1'
 
     defaultConfig {
         applicationId "edu.nustti.timetable"
         minSdk 24
         targetSdk 35
-        versionCode 25
-        versionName "3.1.1"
+        versionCode 26
+        versionName "3.1.2"
     }
 
     signingConfigs {
         debug {
-            // 项目固定 debug 签名：keystore 入库（android/keystore/nustti-debug.keystore），口令在 gradle.properties，
-            // 本地与 CI 共用同一签名，解决每次安装“与已应用签名不同”(-7)
+            // 项目固定 debug 签名：keystore 入库（android/keystore/nustti-debug.keystore），口令�?gradle.properties�?            // 本地�?CI 共用同一签名，解决每次安装“与已应用签名不同�?-7)
             storeFile rootProject.file("keystore/nustti-debug.keystore")
             storePassword NUSTTI_DEBUG_STORE_PASSWORD
             keyAlias NUSTTI_DEBUG_KEY_ALIAS
@@ -74,6 +73,5 @@ dependencies {
     implementation 'androidx.viewpager2:viewpager2:1.1.0'
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.google.code.gson:gson:2.11.0'
-    // 客户端直连教务系统官网后，课表 HTML 解析改在手机端完成
-    implementation 'org.jsoup:jsoup:1.18.1'
+    // 客户端直连教务系统官网后，课�?HTML 解析改在手机端完�?    implementation 'org.jsoup:jsoup:1.18.1'
 }

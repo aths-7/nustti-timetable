@@ -165,21 +165,18 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
     private View buildCard(Course course) {
         LinearLayout box = new LinearLayout(requireContext());
         box.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(12);
-        box.setPadding(pad, pad, pad, pad);
+        // 卡片内边距与设置页行卡片一致（start 16dp / top 12dp / end 12dp / bottom 12dp）
+        box.setPadding(dp(16), dp(12), dp(12), dp(12));
 
         GradientDrawable background = new GradientDrawable();
-        // 卡片背景按用户设置的课程块透明度叠加 alpha，使自定义背景透过卡片可见（文字保持深色可读）
-        int alphaPercent = BackgroundManager.blockAlphaPercent(requireContext());
-        int alpha = Math.round(alphaPercent * 2.55f);
-        background.setColor(android.graphics.Color.argb(alpha, 0xEE, 0xF3, 0xFF));
-        background.setCornerRadius(dp(10));
-        background.setStroke(dp(1), android.graphics.Color.argb(alpha, 0xC7, 0xD8, 0xF5));
+        // 卡片样式与设置页 bg_settings_row 一致：半透明白玻璃雾面 + 14dp 圆角 + 无描边，透出窗口壁纸背景
+        background.setColor(0x30FFFFFF);
+        background.setCornerRadius(dp(14));
         box.setBackground(background);
 
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.bottomMargin = dp(8);
+        params.bottomMargin = dp(10);
         box.setLayoutParams(params);
 
         TextView name = new TextView(requireContext());
@@ -189,7 +186,8 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
         SessionStore store = new SessionStore(requireContext());
         int textColor = store.getCourseTextColor();
         if (textColor == SessionStore.DEFAULT_COURSE_TEXT_COLOR) {
-            textColor = 0xFF1B3A6B;
+            // 半透明白玻璃卡片上默认白字不可读，回退设置页主标题深色
+            textColor = 0xFF0F172A;
         }
         name.setTextColor(textColor);
         android.graphics.Typeface tf = store.courseTypeface();
@@ -200,14 +198,15 @@ public class TodayFragment extends Fragment implements MainActivity.DataListener
         TextView meta = new TextView(requireContext());
         meta.setText(course.timeText() + (timeRange.isEmpty() ? "" : "  " + timeRange)
                 + "   " + course.weeksText());
-        meta.setTextSize(13f);
-        meta.setTextColor(0xFF445566);
+        meta.setTextSize(12f);
+        // 次级文字与设置页 text_secondary_bright 一致
+        meta.setTextColor(0xFFC7D2E3);
         box.addView(meta);
 
         TextView place = new TextView(requireContext());
         place.setText("教师：" + emptyTo(course.teacher) + "    教室：" + emptyTo(course.room));
-        place.setTextSize(13f);
-        place.setTextColor(0xFF445566);
+        place.setTextSize(12f);
+        place.setTextColor(0xFFC7D2E3);
         box.addView(place);
 
         box.setOnClickListener(new View.OnClickListener() {

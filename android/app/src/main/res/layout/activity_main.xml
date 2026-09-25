@@ -24,13 +24,13 @@
             android:layout_weight="1" />
     </LinearLayout>
 
-    <!-- 苹果 Dock 样式液态玻璃导航栏：悬浮内容之上、水平居中、左右留边距 -->
+    <!-- 苹果 Dock 样式液态玻璃导航栏：悬浮内容之上、水平居中、左右留边距。
+         左右留边由 DockBarView 内部子层（模糊层全宽铺满、雾面 mask 与图标行 margin 32dp）实现，
+         不在根布局留 padding，避免 padding 区露出模糊层矩形边缘导致左右露白 -->
     <edu.nustti.timetable.ui.DockBarView
         android:id="@+id/dockBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
         android:paddingBottom="30dp" />
 </FrameLayout>
