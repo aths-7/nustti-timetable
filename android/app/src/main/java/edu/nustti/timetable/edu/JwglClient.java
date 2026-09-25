@@ -407,7 +407,7 @@ public class JwglClient {
     // 课表
     // ------------------------------------------------------------------ //
 
-    /** 打开课表页面；指定学期时按 POST → POST → GET 顺序尝试，返回含课表表格的页面。 */
+    /** 打开课表页面；指定学期时按 POST → POST → GET 顺序尝试，返回含课表数据的页面。 */
     private String openKbPage(String term) {
         String url = "/jsxsd/xskb/xskb_list.do";
         if (term == null || term.isEmpty()) {
@@ -417,18 +417,23 @@ public class JwglClient {
         withZs.put("xnxq01id", term);
         withZs.put("zs", "1");
         String html = post(url, withZs);
-        if (html.contains("kbtable")) {
+        if (hasTimetableData(html)) {
             return html;
         }
         Map<String, String> onlyTerm = new LinkedHashMap<>();
         onlyTerm.put("xnxq01id", term);
         html = post(url, onlyTerm);
-        if (html.contains("kbtable")) {
+        if (hasTimetableData(html)) {
             return html;
         }
         Map<String, String> query = new LinkedHashMap<>();
         query.put("xnxq01id", term);
         return get(url, query);
+    }
+
+    /** 判定页面是否真的包含课表数据：仅含表头骨架的空课表页（如学期无课或数据被清理）不算。 */
+    private boolean hasTimetableData(String html) {
+        return html.contains("kbtable") && html.contains("kbcontent1");
     }
 
     /** 拉取并解析课表。term 为空表示教务系统当前学期。 */
@@ -448,6 +453,19 @@ public class JwglClient {
             throw new LoginException("登录状态已失效，请重新登录");
         }
         TimetableResult result = TimetableParser.parseHtml(html);
+        if ((result.courses == null || result.courses.isEmpty())
+                && term != null && !term.isEmpty()) {
+            // 指定学期无课表（如学期已切换、旧学期数据被清理）：回退到教务系统当前学期重试
+            logs.add("学期 " + term + " 未解析出课程，回退到当前学期重试 ...");
+            term = null;
+            html = openKbPage(null);
+            this.lastPage = html;
+            if (isLoginPage(html)) {
+                loggedIn = false;
+                throw new LoginException("登录状态已失效，请重新登录");
+            }
+            result = TimetableParser.parseHtml(html);
+        }
         if (result.courses == null || result.courses.isEmpty()) {
             String detail = (result.meta == null || result.meta.error == null) ? "" : result.meta.error;
             throw new JwglException("未能在课表页面中识别出课程数据"
