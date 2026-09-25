@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标背景：取原图红色圆形边缘采样色，保证前景红圆与背景视觉融合 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#471B1C" />
+</shape>

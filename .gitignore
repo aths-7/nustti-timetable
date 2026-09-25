@@ -27,3 +27,6 @@ target/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# ---- Local build logs ----
+android/build_log*.txt
