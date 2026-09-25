@@ -1,0 +1,7 @@
+{
+  "versionName": "3.1.4",
+  "versionCode": 28,
+  "apkFileName": "nustti_timetable-3.1.4-debug.apk",
+  "sha": "a249c3b278611221fd9dbf8cad87869ce3a2775a",
+  "releaseNotes": "v3.1.4: bump versionCode 28, fix empty timetable fallback in JwglClient\n"
+}
