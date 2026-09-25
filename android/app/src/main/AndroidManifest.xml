@@ -29,6 +29,11 @@
             android:label="@string/app_name" />
 
         <activity
+            android:name=".ui.EducationActivity"
+            android:exported="false"
+            android:label="教育信息" />
+
+        <activity
             android:name=".ui.AboutActivity"
             android:exported="false"
             android:label="关于与更新" />
