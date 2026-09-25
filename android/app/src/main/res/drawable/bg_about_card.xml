@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 关于页信息卡片：半透明玻璃（与设置页玻璃卡片同语言），深底上呈浅白雾面 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#30FFFFFF" />
+    <corners android:radius="14dp" />
+</shape>

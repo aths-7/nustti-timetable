@@ -27,6 +27,11 @@
             android:name=".ui.MainActivity"
             android:exported="false"
             android:label="@string/app_name" />
+
+        <activity
+            android:name=".ui.AboutActivity"
+            android:exported="false"
+            android:label="关于与更新" />
     </application>
 
 </manifest>

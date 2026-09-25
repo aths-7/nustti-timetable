@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 关于页应用图标占位：品牌蓝圆角块 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#1D4ED8" />
+    <corners android:radius="16dp" />
+</shape>

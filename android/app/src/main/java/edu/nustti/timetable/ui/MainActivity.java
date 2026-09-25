@@ -2,6 +2,8 @@ package edu.nustti.timetable.ui;
 
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -15,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.PopupMenu;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -105,6 +108,13 @@ public class MainActivity extends AppCompatActivity {
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_REFRESH, false)) {
             refresh(false);
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 首次布局 / 从其它界面返回后低频刷新吸色主题色（内部有未布局兜底）
+        applyThemeColor();
     }
 
     /** 边缘到边缘 inset 适配：toolbar 整体加高（原始高度 + 状态栏）使玻璃背景覆盖状态栏、标题进入安全区；Dock 距底固定 30dp。 */
@@ -215,9 +225,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 自定义背景变化后通知周视图 / 今日页重新加载背景，并事件驱动刷新 Dock 毛玻璃模糊源。 */
+    /** 自定义背景变化后通知周视图 / 今日页重新加载背景，并事件驱动刷新 Dock 毛玻璃模糊源与吸色主题色。 */
     public void notifyBackgroundChanged() {
         applyWindowBackground();
+        // 背景变化后低频刷新吸色主题色（顶部标题容器 + 底部 Dock 毛玻璃氛围色）
+        applyThemeColor();
         DockBarView dockBar = findViewById(R.id.dockBar);
         if (dockBar != null) {
             dockBar.refreshBlurBackground();
@@ -247,13 +259,108 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /** 应用用户自定义的顶部主题颜色到玻璃标题栏（默认品牌蓝），设置页修改后调用即时生效。 */
+    /**
+     * 应用主题色：不再使用固定主题色，改为从背景壁纸对应区域吸取主色，叠加到顶部玻璃标题容器
+     * 与底部 Dock 毛玻璃氛围层（容器 RenderEffect 高斯模糊下呈现毛玻璃氛围色）。
+     *
+     * <p>事件驱动低频调用：首次布局完成（{@code applyWindowInsets} 触发后由 onResume 兜底）、
+     * 自定义背景变化（{@link #notifyBackgroundChanged()}）时刷新，<strong>严禁</strong>挂
+     * OnDrawListener 每帧截屏采样。吸色失败 / 未启用壁纸时回退 SessionStore 中用户主题色默认值。</p>
+     */
     public void applyThemeColor() {
         GlassToolbarView tb = findViewById(R.id.toolbar);
-        if (tb == null) {
+        DockBarView db = findViewById(R.id.dockBar);
+        if (tb == null && db == null) {
             return;
         }
-        tb.setThemeColor(new SessionStore(this).getThemeColor());
+        int fallback = new SessionStore(this).getThemeColor();
+        View root = findViewById(android.R.id.content);
+        int screenW = root != null ? root.getWidth() : getResources().getDisplayMetrics().widthPixels;
+        int screenH = root != null ? root.getHeight() : getResources().getDisplayMetrics().heightPixels;
+        if (screenW <= 0 || screenH <= 0) {
+            // 首次布局尚未完成：先用回退色，布局完成 / 背景变化时会再次刷新
+            tb.setThemeColor(fallback);
+            if (db != null) {
+                db.setThemeColor(fallback);
+            }
+            return;
+        }
+        // 顶部容器采样区：状态栏 + 标题栏约屏幕顶部 18%；底部 Dock 采样区：底部约 14%
+        int topColor = sampleBackgroundColor(new Rect(0, 0, screenW, (int) (screenH * 0.18f)),
+                fallback, screenW, screenH);
+        int bottomColor = sampleBackgroundColor(
+                new Rect(0, (int) (screenH * 0.86f), screenW, screenH),
+                fallback, screenW, screenH);
+        tb.setThemeColor(topColor);
+        if (db != null) {
+            db.setThemeColor(bottomColor);
+        }
+    }
+
+    /**
+     * 从背景壁纸位图的指定屏幕区域采样主色：按 BgScaleDrawable 相同的 crop / stretch 映射把屏幕
+     * 区域映射回位图像素区域，逐像素平均后做饱和度加权与明度收窄，避免取到偏灰 / 过暗 / 过亮结果。
+     * 未启用壁纸、映射失败或位图异常时返回 fallback。
+     */
+    private int sampleBackgroundColor(Rect region, int fallback, int screenW, int screenH) {
+        Bitmap bmp = BackgroundManager.loadBitmap(this);
+        if (bmp == null || bmp.isRecycled()) {
+            return fallback;
+        }
+        try {
+            int bw = bmp.getWidth();
+            int bh = bmp.getHeight();
+            if (bw <= 0 || bh <= 0) {
+                return fallback;
+            }
+            // 与 BgScaleDrawable 相同的映射：crop 为等比例裁切居中显示，stretch 为铺满
+            boolean crop = BackgroundManager.MODE_CROP.equals(BackgroundManager.scaleMode(this));
+            float srcX0 = 0f, srcY0 = 0f, scale;
+            if (crop) {
+                scale = Math.max(screenW / (float) bw, screenH / (float) bh);
+                srcX0 = (bw - screenW / scale) / 2f;
+                srcY0 = (bh - screenH / scale) / 2f;
+            } else {
+                scale = Math.max(screenW / (float) bw, screenH / (float) bh);
+            }
+            float px = crop ? scale : (screenW / (float) bw);
+            float py = crop ? scale : (screenH / (float) bh);
+            int left = Math.max(0, Math.round(srcX0 + region.left / px));
+            int top = Math.max(0, Math.round(srcY0 + region.top / py));
+            int right = Math.min(bw, Math.round(srcX0 + region.right / px));
+            int bottom = Math.min(bh, Math.round(srcY0 + region.bottom / py));
+            if (right <= left || bottom <= top) {
+                return fallback;
+            }
+            // 按步长抽样平均，避免大图全量遍历
+            int stepX = Math.max(1, (right - left) / 64);
+            int stepY = Math.max(1, (bottom - top) / 64);
+            long r = 0, g = 0, b = 0, n = 0;
+            for (int y = top; y < bottom; y += stepY) {
+                for (int x = left; x < right; x += stepX) {
+                    int c = bmp.getPixel(x, y);
+                    r += (c >> 16) & 0xFF;
+                    g += (c >> 8) & 0xFF;
+                    b += c & 0xFF;
+                    n++;
+                }
+            }
+            if (n == 0) {
+                return fallback;
+            }
+            // 饱和度加权 + 明度收窄，呈现更鲜明的毛玻璃氛围色
+            float[] hsl = new float[3];
+            ColorUtils.RGBToHSL((int) (r / n), (int) (g / n), (int) (b / n), hsl);
+            hsl[1] = Math.min(1f, hsl[1] * 1.25f + 0.05f);
+            hsl[2] = Math.max(0.28f, Math.min(0.72f, hsl[2]));
+            return ColorUtils.HSLToColor(hsl);
+        } catch (Exception e) {
+            return fallback;
+        } finally {
+            if (!bmp.isRecycled()) {
+                bmp.recycle();
+            }
+        }
     }
 
     public void refresh(boolean demo) {

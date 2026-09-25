@@ -27,6 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
+import androidx.core.graphics.ColorUtils;
 
 import edu.nustti.timetable.R;
 
@@ -102,12 +103,16 @@ public class DockBarView extends FrameLayout {
         addView(blurLayer, blurLp);
 
         // 内容行：三个图标（整周 / 今日 / 设置）
+        // 使用 FrameLayout.LayoutParams + gravity=CENTER 使图标组在 Dock 容器内严格水平居中，
+        // 左右 margin 与 blurLayer 对齐（均 8dp），避免图标行与胶囊背景错位
         contentRow = new LinearLayout(context);
         contentRow.setOrientation(LinearLayout.HORIZONTAL);
         contentRow.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, (int) dp(HEIGHT_DP));
-        rowLp.topMargin = (int) dp(2);
+        FrameLayout.LayoutParams rowLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, (int) dp(HEIGHT_DP));
+        rowLp.gravity = Gravity.CENTER;
+        rowLp.leftMargin = (int) dp(8);
+        rowLp.rightMargin = (int) dp(8);
         contentRow.setLayoutParams(rowLp);
 
         int[] iconRes = {R.drawable.ic_dock_week, R.drawable.ic_dock_today, R.drawable.ic_dock_settings};
@@ -187,6 +192,16 @@ public class DockBarView extends FrameLayout {
 
     public void setOnDockItemSelectedListener(OnDockItemSelectedListener listener) {
         this.listener = listener;
+    }
+
+    /**
+     * 设置主题色氛围层（背景吸色结果）：叠加在雾面之上呈现毛玻璃氛围色，与顶部玻璃容器同族；
+     * 默认品牌蓝。宿主在首次布局 / 背景变化时低频调用。
+     */
+    public void setThemeColor(int color) {
+        if (blurLayer != null) {
+            blurLayer.setThemeColor(color);
+        }
     }
 
     /** ViewPager 页面切换后同步选中态（不触发回调，避免循环）。 */
@@ -378,7 +393,9 @@ public class DockBarView extends FrameLayout {
 
         private final float density;
         private final Paint fogPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint themeTintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private Bitmap regionBitmap;
+        private int themeColor = 0xFF1D4ED8;
 
         BlurBackgroundView(Context context, float corner) {
             super(context);
@@ -397,6 +414,9 @@ public class DockBarView extends FrameLayout {
             fogPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(HEIGHT_DP + 2f),
                     new int[]{0x66D8DCE0, 0x59D8DCE0}, null, Shader.TileMode.CLAMP));
 
+            // 弱主题色氛围层：吸色结果叠加在雾面之上（默认品牌蓝），毛玻璃氛围色
+            themeTintPaint.setColor(ColorUtils.setAlphaComponent(themeColor, 0x26));
+
             // 真实高斯模糊：API 31+ 对整层渲染输出做 GPU 模糊
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 setRenderEffect(RenderEffect.createBlurEffect(dp(BLUR_RADIUS_DP),
@@ -406,6 +426,13 @@ public class DockBarView extends FrameLayout {
 
         private float dp(float v) {
             return v * density;
+        }
+
+        /** 更新氛围色（背景吸色结果），触发重绘。 */
+        void setThemeColor(int color) {
+            themeColor = color;
+            themeTintPaint.setColor(ColorUtils.setAlphaComponent(color, 0x26));
+            invalidate();
         }
 
         void setRegionBitmap(Bitmap bmp) {
@@ -443,6 +470,8 @@ public class DockBarView extends FrameLayout {
             }
             // 2) 半透明灰白雾面（低版本降级时提供静态玻璃观感）
             canvas.drawRect(0f, 0f, w, h, fogPaint);
+            // 3) 弱主题色氛围层（背景吸色结果），与顶部玻璃容器同族毛玻璃氛围色
+            canvas.drawRect(0f, 0f, w, h, themeTintPaint);
         }
     }
 

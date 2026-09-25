@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 关于页窗口背景：深紫渐变，与设置页截图玻璃态色调一致，避免独立页面出现白色底块 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:startColor="#3B2A5E"
+        android:endColor="#22163B" />
+</shape>
