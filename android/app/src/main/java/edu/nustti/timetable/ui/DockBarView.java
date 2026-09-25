@@ -11,6 +11,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -137,10 +138,15 @@ public class DockBarView extends FrameLayout {
     private View buildItem(Context context, int index, int iconRes, String labelText) {
         LinearLayout item = new LinearLayout(context);
         item.setOrientation(LinearLayout.VERTICAL);
-        item.setGravity(Gravity.CENTER_HORIZONTAL);
-        item.setPadding((int) dp(6), (int) dp(6), (int) dp(6), (int) dp(2));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+        item.setGravity(Gravity.CENTER);
+        item.setPadding((int) dp(10), (int) dp(6), (int) dp(10), (int) dp(2));
+        // 宽度 wrap_content：三个图标组由 contentRow 的 gravity=CENTER 统一水平居中，
+        // 左右留白严格对称；选中胶囊背景仅包裹本组内容，不再横跨整行 1/3 宽度
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT);
+        lp.leftMargin = (int) dp(4);
+        lp.rightMargin = (int) dp(4);
         item.setLayoutParams(lp);
         item.setClickable(true);
         item.setFocusable(true);
@@ -157,6 +163,8 @@ public class DockBarView extends FrameLayout {
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
         label.setTextColor(Color.parseColor("#F1F5F9"));
         label.setGravity(Gravity.CENTER);
+        // 黑色描影：Dock 悬浮于壁纸之上，加阴影保证浅色小字在亮/暗背景上都清晰可读
+        label.setShadowLayer(dp(2f), 0f, dp(1f), 0x8C000000);
         itemLabels[index] = label;
 
         View dot = new View(context);
@@ -266,6 +274,9 @@ public class DockBarView extends FrameLayout {
                 item.setBackground(capsuleBg);
                 icon.setColorFilter(Color.parseColor("#FFFFFF"));
                 label.setTextColor(Color.parseColor("#FFFFFF"));
+                // 选中项文字加粗 + 更重描影，视觉权重明显高于未选中项
+                label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                label.setShadowLayer(dp(2f), 0f, dp(1f), 0xAA000000);
                 dot.setVisibility(View.VISIBLE);
                 if (animate) {
                     // 点击瞬间放大上浮（scale 1.0 -> 1.25），再以弹性回落至选中态 1.12
@@ -295,6 +306,8 @@ public class DockBarView extends FrameLayout {
                         .setDuration(180).start();
                 icon.setColorFilter(Color.parseColor("#FFFFFF"));
                 label.setTextColor(Color.parseColor("#F1F5F9"));
+                label.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+                label.setShadowLayer(dp(2f), 0f, dp(1f), 0x8C000000);
                 dot.setVisibility(View.INVISIBLE);
             }
         }
