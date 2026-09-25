@@ -67,6 +67,8 @@ public class DockBarView extends FrameLayout {
 
     private int selectedIndex = 0;
     private OnDockItemSelectedListener listener;
+    /** 选中项高亮胶囊背景（品牌蓝半透明圆角），让选中态更醒目。 */
+    private GradientDrawable capsuleBg;
 
     /** 全屏壁纸快照（与窗口根背景同一 Drawable 绘制结果），用于按 Dock 区域裁剪模糊源。 */
     private Bitmap fullWallpaper;
@@ -124,6 +126,11 @@ public class DockBarView extends FrameLayout {
         }
         addView(contentRow);
 
+        capsuleBg = new GradientDrawable();
+        capsuleBg.setShape(GradientDrawable.RECTANGLE);
+        capsuleBg.setCornerRadius(dp(18f));
+        capsuleBg.setColor(Color.parseColor("#7A1D4ED8"));
+
         updateItems(false);
     }
 
@@ -142,20 +149,20 @@ public class DockBarView extends FrameLayout {
         icon.setImageResource(iconRes);
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams((int) dp(26), (int) dp(26));
         icon.setLayoutParams(ilp);
-        icon.setColorFilter(Color.parseColor("#475569"));
+        icon.setColorFilter(Color.parseColor("#FFFFFF"));
         itemIcons[index] = icon;
 
         TextView label = new TextView(context);
         label.setText(labelText);
         label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f);
-        label.setTextColor(Color.parseColor("#475569"));
+        label.setTextColor(Color.parseColor("#F1F5F9"));
         label.setGravity(Gravity.CENTER);
         itemLabels[index] = label;
 
         View dot = new View(context);
         GradientDrawable dotBg = new GradientDrawable();
         dotBg.setShape(GradientDrawable.OVAL);
-        dotBg.setColor(Color.parseColor("#1D4ED8"));
+        dotBg.setColor(Color.parseColor("#FFFFFF"));
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams((int) dp(6), (int) dp(3));
         dlp.topMargin = (int) dp(3);
         dot.setLayoutParams(dlp);
@@ -256,8 +263,9 @@ public class DockBarView extends FrameLayout {
             final View dot = itemDots[i];
             boolean selected = i == selectedIndex;
             if (selected) {
-                icon.setColorFilter(Color.parseColor("#1D4ED8"));
-                label.setTextColor(Color.parseColor("#1D4ED8"));
+                item.setBackground(capsuleBg);
+                icon.setColorFilter(Color.parseColor("#FFFFFF"));
+                label.setTextColor(Color.parseColor("#FFFFFF"));
                 dot.setVisibility(View.VISIBLE);
                 if (animate) {
                     // 点击瞬间放大上浮（scale 1.0 -> 1.25），再以弹性回落至选中态 1.12
@@ -281,11 +289,12 @@ public class DockBarView extends FrameLayout {
                             .setDuration(220).setInterpolator(new OvershootInterpolator(1.4f)).start();
                 }
             } else {
+                item.setBackground(null);
                 item.animate().cancel();
                 item.animate().scaleX(1f).scaleY(1f).translationY(0f)
                         .setDuration(180).start();
-                icon.setColorFilter(Color.parseColor("#475569"));
-                label.setTextColor(Color.parseColor("#475569"));
+                icon.setColorFilter(Color.parseColor("#FFFFFF"));
+                label.setTextColor(Color.parseColor("#F1F5F9"));
                 dot.setVisibility(View.INVISIBLE);
             }
         }
@@ -412,10 +421,10 @@ public class DockBarView extends FrameLayout {
 
             // 半透明灰白雾面：与顶部悬浮玻璃容器同一玻璃语言，营造毛玻璃质感
             fogPaint.setShader(new LinearGradient(0f, 0f, 0f, dp(HEIGHT_DP + 2f),
-                    new int[]{0x66D8DCE0, 0x59D8DCE0}, null, Shader.TileMode.CLAMP));
+                    new int[]{0x26D8DCE0, 0x1AD8DCE0}, null, Shader.TileMode.CLAMP));
 
             // 弱主题色氛围层：吸色结果叠加在雾面之上（默认品牌蓝），毛玻璃氛围色
-            themeTintPaint.setColor(ColorUtils.setAlphaComponent(themeColor, 0x26));
+            themeTintPaint.setColor(ColorUtils.setAlphaComponent(themeColor, 0x14));
 
             // 真实高斯模糊：API 31+ 对整层渲染输出做 GPU 模糊
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -431,7 +440,7 @@ public class DockBarView extends FrameLayout {
         /** 更新氛围色（背景吸色结果），触发重绘。 */
         void setThemeColor(int color) {
             themeColor = color;
-            themeTintPaint.setColor(ColorUtils.setAlphaComponent(color, 0x26));
+            themeTintPaint.setColor(ColorUtils.setAlphaComponent(color, 0x14));
             invalidate();
         }
 
@@ -485,6 +494,7 @@ public class DockBarView extends FrameLayout {
     private static class ShadowedImageView extends ImageView {
 
         private final Paint shadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final float density;
         private Bitmap shadowMask;
 
@@ -492,7 +502,10 @@ public class DockBarView extends FrameLayout {
             super(context);
             density = context.getResources().getDisplayMetrics().density;
             setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-            shadowPaint.setShadowLayer(dp(3f), 0f, dp(1.5f), 0x4D000000);
+            // 深色描边：紧贴图标轮廓一圈，保证白色图标在彩色壁纸上清晰可辨
+            strokePaint.setShadowLayer(dp(1f), 0f, 0f, 0xB3000000);
+            // 明显投影：拉开图标与背景的层次
+            shadowPaint.setShadowLayer(dp(4f), 0f, dp(1.5f), 0x99000000);
         }
 
         private float dp(float v) {
@@ -522,7 +535,8 @@ public class DockBarView extends FrameLayout {
                 }
                 d.draw(mc);
             }
-            // 先画投影（阴影由图标 alpha 蒙版 + setShadowLayer 生成）
+            // 先画描边（紧贴轮廓的深色一圈），再画投影（扩散阴影），最后画原图标
+            canvas.drawBitmap(shadowMask, 0f, 0f, strokePaint);
             canvas.drawBitmap(shadowMask, 0f, 0f, shadowPaint);
             super.onDraw(canvas);
         }
