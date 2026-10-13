@@ -379,6 +379,13 @@ public class JwglClient {
             loggedIn = true;
             return;
         }
+        // 优先走官网统一登录口：选课登录口的会话在部分学校会被判为「需改密」，课表打不开
+        if (loginViaPortal(studentId, password)) {
+            loggedIn = true;
+            logs.add("登录成功");
+            return;
+        }
+        // 回退：选课模块登录口（官网登录口不可用 / 被改密拦截时沿用旧路径）
         Map<String, String> payload = new LinkedHashMap<>();
         payload.put("userAccount", studentId);
         payload.put("userPassword", "");
@@ -449,10 +456,86 @@ public class JwglClient {
         return html.contains("kbtable") && html.contains("kbcontent1");
     }
 
+    /** 官网统一登录口登录页判定：页面上同时存在账号输入框与登录表单 action。 */
+    public static boolean isPortalLoginPage(String html) {
+        return html != null && html.contains("userAccount")
+                && html.contains("Logon.do?method=logon");
+    }
+
+    /**
+     * 官网登录口的凭据编码，与教务系统登录页 JS 算法完全一致：
+     * 逐个取 {@code 学号%%%密码} 的字符，并在前 20 个字符后各插入 scode 的前 N 位
+     * （N 取 sxh 对应位的数字），剩余部分整体拼接。
+     */
+    public static String encodePortal(String user, String password, String scode, String sxh) {
+        String code = (user == null ? "" : user) + "%%%" + (password == null ? "" : password);
+        String seq = sxh == null ? "" : sxh;
+        StringBuilder enc = new StringBuilder();
+        StringBuilder rest = new StringBuilder(scode == null ? "" : scode);
+        for (int i = 0; i < code.length(); i++) {
+            if (i >= 20) {
+                enc.append(code, i, code.length());
+                break;
+            }
+            int take = 0;
+            if (i < seq.length()) {
+                char c = seq.charAt(i);
+                if (c >= '0' && c <= '9') {
+                    take = c - '0';
+                }
+            }
+            enc.append(code.charAt(i));
+            if (take > 0 && rest.length() > 0) {
+                take = Math.min(take, rest.length());
+                enc.append(rest, 0, take);
+                rest.delete(0, take);
+            }
+        }
+        return enc.toString();
+    }
+
+    /**
+     * 通过官网统一登录口（{@code /Logon.do?method=logon}）登录。
+     *
+     * <p>选课模块登录口 {@code /jsxsd/xk/LoginToXk} 建立的会话在部分学校会被判定为
+     * 「需要修改密码」，课表等业务模块会被重定向到改密页；官网登录口完成 SSO 交接后
+     * 会话完整，可正常读取课表。因此优先尝试本路径。</p>
+     *
+     * @return true 表示登录成功（会话可用）
+     */
+    private boolean loginViaPortal(String studentId, String password) {
+        try {
+            // 动态盐与会话绑定，必须先取 salt 再提交
+            String sess = get("/Logon.do?method=logon&flag=sess", null);
+            if (sess == null || !sess.contains("#")) {
+                return false;
+            }
+            int idx = sess.indexOf('#');
+            String scode = sess.substring(0, idx).trim();
+            String sxh = sess.substring(idx + 1).trim();
+            if (scode.isEmpty() || sxh.isEmpty()) {
+                return false;
+            }
+            Map<String, String> payload = new LinkedHashMap<>();
+            payload.put("encoded", encodePortal(studentId, password, scode, sxh));
+            payload.put("userAccount", "");
+            payload.put("userPassword", "");
+            logs.add("正在通过官网登录口提交登录信息 ...");
+            String html = post("/Logon.do?method=logon", payload);
+            if (html == null || html.isEmpty()) {
+                return false;
+            }
+            // 失败时停留在门户登录页；被强制改密时同样视为本路径不可用
+            return !isPortalLoginPage(html) && !isForceChangePasswordPage(html);
+        } catch (Exception e) {
+            logs.add("官网登录口不可用，改用选课登录口");
+            return false;
+        }
+    }
     /**
      * 判定是否为「强制修改密码」页面。
      *
-     * <p>教务系统在账号使用初始密码 / 密码到期时，会把登录后的所有请求重定向到改密页
+     * <p>教务系统在账号使用初始密码 / 密码到期时，会把登录后的业务请求重定向到改密页
      * （表单 action 为 /jsxsd/grsz/grsz_xgmm_beg.do）。此时会话其实已建立，但课表等
      * 业务页面一律取不到数据，若不识别就会误报成「解析不出课表」。</p>
      */
