@@ -1,0 +1,7 @@
+{
+  "versionName": "3.1.14",
+  "versionCode": 39,
+  "apkFileName": "nustti_timetable-3.1.14-debug.apk",
+  "sha": "84bb537f3b0f3d3289c27397f42929034e11dd67",
+  "releaseNotes": "fix(login): 改用官网统一登录口，修复选课口会话被强制改密拦截 (v3.1.14)\n"
+}
