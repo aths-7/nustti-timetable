@@ -18,7 +18,7 @@
     <string name="tip_jwgl">课表直连教务系统官网 jwgl.nustti.edu.cn，账号密码仅保存在本机</string>
 
     <string name="widget_label">南泰科课表 · 桌面小组件</string>
-    <string name="widget_title">今日课表</string>
+    <string name="widget_title">本周课表</string>
     <string name="widget_empty">暂无课表缓存\n登录后添加小组件即可在桌面查看</string>
     <string name="widget_refresh">刷新</string>
     <string name="widget_loading">加载中…</string>

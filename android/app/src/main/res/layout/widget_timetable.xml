@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
-    android:padding="12dp">
+    android:padding="10dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,7 +16,7 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingBottom="8dp">
+            android:paddingBottom="6dp">
 
             <TextView
                 android:id="@+id/widget_title"
@@ -27,7 +27,7 @@
                 android:singleLine="true"
                 android:text="@string/widget_title"
                 android:textColor="#FFFFFF"
-                android:textSize="15sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -38,21 +38,27 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:paddingLeft="10dp"
-                android:paddingTop="4dp"
+                android:paddingTop="3dp"
                 android:paddingRight="10dp"
-                android:paddingBottom="4dp"
+                android:paddingBottom="3dp"
                 android:text="@string/widget_refresh"
                 android:textColor="#FFFFFF"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
         </LinearLayout>
 
         <TextView
             android:id="@+id/widget_subtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingBottom="6dp"
+            android:paddingBottom="4dp"
             android:textColor="#BFC9DA"
-            android:textSize="11sp" />
+            android:textSize="10sp" />
+
+        <LinearLayout
+            android:id="@+id/widget_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal" />
 
         <FrameLayout
             android:layout_width="match_parent"
@@ -60,7 +66,7 @@
             android:layout_weight="1">
 
             <LinearLayout
-                android:id="@+id/widget_courses"
+                android:id="@+id/widget_grid"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
@@ -82,7 +88,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:indeterminateTint="#FFFFFF"
-            android:paddingTop="6dp"
+            android:paddingTop="4dp"
             android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>
