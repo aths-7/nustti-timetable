@@ -43,6 +43,8 @@ import edu.nustti.timetable.model.TimetableResult;
 public class MainActivity extends AppCompatActivity {
 
     public static final String EXTRA_REFRESH = "refreshFromServer";
+    /** 由桌面小组件点击进入，跳过登录流程直接展示本地缓存课表。 */
+    public static final String EXTRA_FROM_WIDGET = "fromWidget";
 
     /** 课表数据订阅者（各课表视图）。 */
     public interface DataListener {
@@ -115,6 +117,15 @@ public class MainActivity extends AppCompatActivity {
 
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_REFRESH, false)) {
             refresh(false);
+        } else if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_FROM_WIDGET, false)) {
+            // 从桌面小组件进入：若本地缓存存在则先展示，并后台刷新一次
+            if (repository.cached() != null) {
+                data = repository.cached();
+                dispatch();
+                refresh(false);
+            } else {
+                toast("本地暂无课表缓存，请先登录");
+            }
         }
     }
 

@@ -49,9 +49,23 @@ public class LoginActivity extends AppCompatActivity {
 
         Button btnLogin = findViewById(R.id.btnLogin);
         Button btnDemo = findViewById(R.id.btnDemo);
+        Button btnOffline = findViewById(R.id.btnOffline);
 
         etStudentId.setText(store.getStudentId());
         etPassword.setText(store.getPassword());
+
+        // 已有本地缓存时，允许跳过登录直接查看（已登录的课表会一直留在本机）
+        if (repository.cached() != null) {
+            btnOffline.setVisibility(View.VISIBLE);
+            btnOffline.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    openMain();
+                }
+            });
+        } else {
+            btnOffline.setVisibility(View.GONE);
+        }
 
         btnLogin.setOnClickListener(new View.OnClickListener() {
             @Override

@@ -93,6 +93,32 @@ public class SessionStore {
                 .putLong(KEY_CACHE_AT, System.currentTimeMillis())
                 .putString(KEY_CACHE_FROM, from == null ? "" : from)
                 .apply();
+        notifyWidget();
+    }
+
+    /** 课表缓存变化后主动刷新桌面小组件（无需等待系统轮询）。 */
+    private void notifyWidget() {
+        try {
+            Context app = null;
+            try {
+                app = Class.forName("android.app.ActivityThread")
+                        .getMethod("currentApplication").invoke(null) instanceof android.app.Application
+                        ? (android.content.Context) Class.forName("android.app.ActivityThread")
+                        .getMethod("currentApplication").invoke(null)
+                        : null;
+            } catch (Exception ignored) {
+                app = null;
+            }
+            if (app == null) {
+                return;
+            }
+            android.content.Intent intent = new android.content.Intent(
+                    edu.nustti.timetable.widget.TimetableWidgetProvider.ACTION_TIMETABLE_CHANGED);
+            intent.setPackage(app.getPackageName());
+            app.sendBroadcast(intent);
+        } catch (Exception ignored) {
+            // 小组件通知失败不应影响缓存写入
+        }
     }
 
     public String loadTimetableJson() {
@@ -109,6 +135,7 @@ public class SessionStore {
 
     public void clearTimetable() {
         prefs.edit().remove(KEY_CACHE).remove(KEY_CACHE_AT).remove(KEY_CACHE_FROM).apply();
+        notifyWidget();
     }
 
     // ------------------------------------------------------------------ //

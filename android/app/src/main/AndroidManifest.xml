@@ -54,6 +54,18 @@
             android:name=".ui.DataSourceActivity"
             android:exported="false"
             android:label="数据来源" />
+
+        <receiver
+            android:name=".widget.TimetableWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/timetable_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

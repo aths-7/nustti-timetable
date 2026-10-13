@@ -80,6 +80,16 @@
             android:text="@string/action_demo"
             android:textAllCaps="false" />
 
+        <Button
+            android:id="@+id/btnOffline"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/widget_enter_offline"
+            android:textAllCaps="false"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tvStatus"
             android:layout_width="match_parent"

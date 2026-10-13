@@ -16,4 +16,15 @@
     <string name="action_save">保存设置</string>
 
     <string name="tip_jwgl">课表直连教务系统官网 jwgl.nustti.edu.cn，账号密码仅保存在本机</string>
+
+    <string name="widget_label">南泰科课表 · 桌面小组件</string>
+    <string name="widget_title">今日课表</string>
+    <string name="widget_empty">暂无课表缓存\n登录后添加小组件即可在桌面查看</string>
+    <string name="widget_refresh">刷新</string>
+    <string name="widget_loading">加载中…</string>
+    <string name="widget_enter_offline">查看本地缓存课表</string>
+    <string name="widget_updated_at">更新于 %1$s</string>
+    <string name="widget_week_format">第 %1$d 周</string>
+    <string name="widget_no_course_today">今天没有课 🎉</string>
+    <string name="widget_no_timetable">未登录或缓存为空</string>
 </resources>
