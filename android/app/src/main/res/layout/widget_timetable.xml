@@ -54,22 +54,16 @@
             android:textColor="#BFC9DA"
             android:textSize="10sp" />
 
-        <LinearLayout
-            android:id="@+id/widget_header"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal" />
-
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1">
 
-            <LinearLayout
-                android:id="@+id/widget_grid"
+            <ImageView
+                android:id="@+id/widget_image"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:layout_height="match_parent"
+                android:scaleType="fitXY" />
 
             <TextView
                 android:id="@+id/widget_empty"
@@ -80,15 +74,15 @@
                 android:textColor="#BFC9DA"
                 android:textSize="12sp"
                 android:visibility="gone" />
-        </FrameLayout>
 
-        <ProgressBar
-            android:id="@+id/widget_progress"
-            style="?android:attr/progressBarStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:indeterminateTint="#FFFFFF"
-            android:paddingTop="4dp"
-            android:visibility="gone" />
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="?android:attr/progressBarStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:indeterminateTint="#FFFFFF"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 </FrameLayout>
