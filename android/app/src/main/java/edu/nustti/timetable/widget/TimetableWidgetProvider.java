@@ -112,8 +112,30 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         }
     }
 
+    /** 供外观设置页调用：透明度等设置变更后立即重绘所有小组件。 */
+    public static void refreshWidgets(Context context) {
+        try {
+            AppWidgetManager mgr = AppWidgetManager.getInstance(context);
+            int[] ids = mgr.getAppWidgetIds(
+                    new ComponentName(context, TimetableWidgetProvider.class));
+            if (ids != null && ids.length > 0) {
+                renderAll(context, mgr, ids);
+            }
+        } catch (Exception ignored) {
+            // 未添加小组件或系统异常时静默忽略
+        }
+    }
+
     private static RemoteViews buildBaseViews(Context context) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_timetable);
+
+        // 整体不透明度：设置在根布局上，连同背景与内容一起透出桌面壁纸
+        int alphaPercent = new SessionStore(context).getWidgetAlphaPercent();
+        try {
+            views.setFloat(R.id.widget_root, "setAlpha", alphaPercent / 100f);
+        } catch (Throwable ignored) {
+            // 个别厂商 Launcher 对该 RemoteViews 反射调用不兼容时忽略，不影响显示
+        }
 
         Intent open = new Intent(context, edu.nustti.timetable.ui.MainActivity.class);
         open.putExtra(edu.nustti.timetable.ui.MainActivity.EXTRA_FROM_WIDGET, true);

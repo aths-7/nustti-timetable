@@ -21,11 +21,16 @@ public class SessionStore {
     private static final String KEY_COURSE_TEXT_COLOR = "courseTextColor";
     private static final String KEY_COURSE_FONT = "courseFont";
     private static final String KEY_THEME_COLOR = "themeColor";
+    private static final String KEY_WIDGET_ALPHA_PERCENT = "widgetAlphaPercent";
 
     /** 课程文字颜色默认值：白色（与课程块深色底配套，保证可读）。 */
     public static final int DEFAULT_COURSE_TEXT_COLOR = 0xFFFFFFFF;
     /** 顶部主题颜色默认值：品牌蓝。 */
     public static final int DEFAULT_THEME_COLOR = 0xFF1D4ED8;
+    /** 桌面小组件整体不透明度默认值（100 = 完全不透明）。 */
+    public static final int DEFAULT_WIDGET_ALPHA_PERCENT = 100;
+    /** 小组件不透明度下限，避免调到完全看不见。 */
+    public static final int MIN_WIDGET_ALPHA_PERCENT = 20;
     /** 字体选项标识。 */
     public static final String FONT_DEFAULT = "default";
     public static final String FONT_SERIF = "serif";
@@ -167,6 +172,20 @@ public class SessionStore {
 
     public void setThemeColor(int color) {
         prefs.edit().putInt(KEY_THEME_COLOR, color).apply();
+    }
+
+    /**
+     * 桌面小组件整体不透明度百分比（20 - 100）：数值越低越透明，透出桌面壁纸。
+     * 改动后由外观设置页主动触发小组件重绘。
+     */
+    public int getWidgetAlphaPercent() {
+        int v = prefs.getInt(KEY_WIDGET_ALPHA_PERCENT, DEFAULT_WIDGET_ALPHA_PERCENT);
+        return Math.max(MIN_WIDGET_ALPHA_PERCENT, Math.min(100, v));
+    }
+
+    public void setWidgetAlphaPercent(int percent) {
+        int clamped = Math.max(MIN_WIDGET_ALPHA_PERCENT, Math.min(100, percent));
+        prefs.edit().putInt(KEY_WIDGET_ALPHA_PERCENT, clamped).apply();
     }
 
     /**

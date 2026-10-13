@@ -24,6 +24,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import edu.nustti.timetable.R;
 import edu.nustti.timetable.data.SessionStore;
+import edu.nustti.timetable.widget.TimetableWidgetProvider;
 
 /** 外观详情页：背景显示模式、字体颜色、课程字体、选择背景图片、恢复默认背景、课程块透明度。 */
 public class AppearanceActivity extends AppCompatActivity {
@@ -34,6 +35,8 @@ public class AppearanceActivity extends AppCompatActivity {
     private Spinner spFontFamily;
     private TextView tvBlockAlpha;
     private SeekBar sbBlockAlpha;
+    private TextView tvWidgetAlpha;
+    private SeekBar sbWidgetAlpha;
     private View vFontColorPreview;
     private boolean suppressBgMode = true;
 
@@ -62,6 +65,8 @@ public class AppearanceActivity extends AppCompatActivity {
         spFontFamily = findViewById(R.id.spFontFamily);
         tvBlockAlpha = findViewById(R.id.tvBlockAlpha);
         sbBlockAlpha = findViewById(R.id.sbBlockAlpha);
+        tvWidgetAlpha = findViewById(R.id.tvWidgetAlpha);
+        sbWidgetAlpha = findViewById(R.id.sbWidgetAlpha);
         vFontColorPreview = findViewById(R.id.vFontColorPreview);
 
         updateBgStatus();
@@ -70,6 +75,7 @@ public class AppearanceActivity extends AppCompatActivity {
         setupFontColor();
         setupFontFamily();
         setupBlockAlpha();
+        setupWidgetAlpha();
     }
 
     /** 背景显示模式：等比例裁切 / 拉伸铺满。 */
@@ -204,6 +210,42 @@ public class AppearanceActivity extends AppCompatActivity {
             public void onClick(View v) {
                 sbBlockAlpha.setProgress(BackgroundManager.DEFAULT_BLOCK_ALPHA_PERCENT);
                 toast("课程块透明度已恢复默认（85%）");
+            }
+        });
+    }
+
+    /**
+     * 小组件整体不透明度：SeekBar 进度 0..80 映射为 20%..100%（避免调到完全看不见），
+     * 拖动即时持久化并重新渲染桌面小组件。
+     */
+    private void setupWidgetAlpha() {
+        int percent = store.getWidgetAlphaPercent();
+        sbWidgetAlpha.setProgress(percent - SessionStore.MIN_WIDGET_ALPHA_PERCENT);
+        tvWidgetAlpha.setText(percent + "%");
+        sbWidgetAlpha.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = progress + SessionStore.MIN_WIDGET_ALPHA_PERCENT;
+                tvWidgetAlpha.setText(value + "%");
+                store.setWidgetAlphaPercent(value);
+                TimetableWidgetProvider.refreshWidgets(AppearanceActivity.this);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+        TextView btnReset = findViewById(R.id.btnResetWidgetAlpha);
+        btnReset.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                sbWidgetAlpha.setProgress(SessionStore.DEFAULT_WIDGET_ALPHA_PERCENT
+                        - SessionStore.MIN_WIDGET_ALPHA_PERCENT);
+                toast("小组件透明度已恢复默认（100%）");
             }
         });
     }
