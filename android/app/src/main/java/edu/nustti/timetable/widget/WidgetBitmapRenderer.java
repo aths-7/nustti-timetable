@@ -142,6 +142,12 @@ public final class WidgetBitmapRenderer {
         titlePaint.setFakeBoldText(true);
         titlePaint.setShadowLayer(2 * dp, 0, 1 * dp, 0xB3000000);
 
+        // 教室文字：与 App 内一致（浅色、@前缀、过长省略），显示在课程名下方
+        TextPaint roomPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+        roomPaint.setColor(Color.parseColor("#F1F5F9"));
+        roomPaint.setTextSize(9 * dp);
+        roomPaint.setShadowLayer(1.5f * dp, 0, 1 * dp, 0xB3000000);
+
         for (Map.Entry<String, List<Course>> entry : slotGroups.entrySet()) {
             Course course = entry.getValue().get(0);
             int color = BLOCK_COLORS[Math.abs(course.name.hashCode()) % BLOCK_COLORS.length];
@@ -159,37 +165,53 @@ public final class WidgetBitmapRenderer {
             float radius = 5 * dp;
             canvas.drawRoundRect(rect, radius, radius, blockPaint);
 
-            // 课程名：自动缩放字号适配
+            // 课程名 + 教室：与 App 内 WeekGridView 一致——标题从块顶部排布，
+            // 预留教室行高度后逐级缩小字号；教室以 @ 前缀显示在标题下方，过长省略
             float pad = 3 * dp;
             float maxTextW = rect.width() - pad * 2;
             if (maxTextW < 10 * dp) {
                 continue;
             }
             String name = course.name == null ? "" : course.name;
+            String room = course.room == null ? "" : course.room;
+            boolean hasRoom = !room.isEmpty();
+            float roomLineH = roomPaint.getFontSpacing() + 2 * dp;
+            float roomH = hasRoom ? roomLineH : 0f;
+
             float titleSize = 11 * dp;
             float minSize = 7 * dp;
             StaticLayout layout = null;
-            while (titleSize >= minSize && layout == null) {
+            while (titleSize >= minSize) {
                 titlePaint.setTextSize(titleSize);
-                int lines = (int) Math.max(1, Math.floor((rect.height() - pad * 2) / titlePaint.getFontSpacing()));
+                int lines = (int) Math.max(1, Math.floor(
+                        (rect.height() - pad * 2 - roomH) / titlePaint.getFontSpacing()));
                 layout = StaticLayout.Builder.obtain(name, 0, name.length(), titlePaint,
                                 Math.max(1, (int) maxTextW))
-                        .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                         .setMaxLines(lines)
-                        .setEllipsize(TextUtils.TruncateAt.END)
                         .build();
-                if (layout.getLineCount() > lines) {
-                    layout = null;
-                    titleSize -= 0.5f * dp;
+                if (layout.getLineCount() <= lines) {
+                    break;
                 }
+                layout = null;
+                titleSize -= 0.5f * dp;
             }
             if (layout != null) {
-                float textH = layout.getHeight();
-                float startY = rect.top + pad + (rect.height() - 2 * pad - textH) / 2f;
                 canvas.save();
-                canvas.translate(rect.left + pad, startY);
+                canvas.translate(rect.left + pad, rect.top + pad);
                 layout.draw(canvas);
                 canvas.restore();
+
+                if (hasRoom) {
+                    float roomY = rect.top + pad + layout.getHeight() + 2 * dp + roomLineH;
+                    float roomBottomLimit = rect.bottom - pad;
+                    if (roomY + roomPaint.descent() > roomBottomLimit) {
+                        roomY = roomBottomLimit - roomPaint.descent();
+                    }
+                    String roomText = TextUtils.ellipsize("@" + room, roomPaint, maxTextW,
+                            TextUtils.TruncateAt.END).toString();
+                    canvas.drawText(roomText, rect.left + pad, roomY, roomPaint);
+                }
             }
         }
 

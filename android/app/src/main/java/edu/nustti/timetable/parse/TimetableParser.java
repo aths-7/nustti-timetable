@@ -96,7 +96,7 @@ public final class TimetableParser {
         text = BR_RE.matcher(text).replaceAll(" ");
         text = BLOCK_RE.matcher(text).replaceAll(" ");
         text = TAG_RE.matcher(text).replaceAll("");
-        text = Parser.unescapeEntities(text, false).replace('\u00a0', ' ');
+        text = unescapeAll(text);
         return text.replaceAll("\\s+", " ").trim();
     }
 
@@ -109,9 +109,24 @@ public final class TimetableParser {
         text = BR_RE.matcher(text).replaceAll("\n");
         text = BLOCK_RE.matcher(text).replaceAll("\n");
         text = TAG_RE.matcher(text).replaceAll("");
-        text = Parser.unescapeEntities(text, false).replace('\u00a0', ' ');
+        text = unescapeAll(text);
         text = text.replace(SEP_TOKEN, "\n" + SEP_TOKEN + "\n");
         return linesToSegments(Arrays.asList(text.split("\n", -1)));
+    }
+
+    /**
+     * 反复反转义 HTML 实体并清理空白：教务系统页面存在双重转义（&amp;amp;nbsp; 之类），
+     * 单次 unescape 会留下字面 "&amp;nbsp;" 文本混入课程名，故循环反转义后再兜底替换。
+     */
+    private static String unescapeAll(String text) {
+        String prev = null;
+        String cur = text == null ? "" : text;
+        for (int i = 0; i < 3 && !cur.equals(prev); i++) {
+            prev = cur;
+            cur = Parser.unescapeEntities(cur, false);
+        }
+        return cur.replace("&nbsp;", " ").replace("&nbsp", " ")
+                .replace('\u00a0', ' ');
     }
 
     public static List<List<String>> textToSegments(String text) {
