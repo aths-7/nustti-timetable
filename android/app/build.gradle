@@ -19,8 +19,8 @@ android {
         applicationId "edu.nustti.timetable"
         minSdk 24
         targetSdk 35
-        versionCode 36
-        versionName "3.1.11"
+        versionCode 37
+        versionName "3.1.12"
     }
 
     signingConfigs {

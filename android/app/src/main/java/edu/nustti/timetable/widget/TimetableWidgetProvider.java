@@ -131,10 +131,12 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
 
         // 透明度只作用于背景层（widget_bg_view）；课程色块与文字始终不透明
         int alphaPercent = new SessionStore(context).getWidgetAlphaPercent();
-        try {
-            views.setFloat(R.id.widget_bg_view, "setAlpha", alphaPercent / 100f);
-        } catch (Throwable ignored) {
-            // 个别厂商 Launcher 对该 RemoteViews 反射调用不兼容时忽略，不影响显示
+        if (alphaPercent < 100) {
+            try {
+                views.setFloat(R.id.widget_bg_view, "setAlpha", alphaPercent / 100f);
+            } catch (Throwable ignored) {
+                // 个别厂商 Launcher 对该 RemoteViews 反射调用不兼容时忽略，不影响显示
+            }
         }
 
         Intent open = new Intent(context, edu.nustti.timetable.ui.MainActivity.class);
