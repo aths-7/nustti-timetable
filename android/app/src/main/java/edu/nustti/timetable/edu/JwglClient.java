@@ -387,6 +387,11 @@ public class JwglClient {
         payload.put("pwdstr2", "");
         logs.add("正在提交登录信息 ...");
         html = post("/jsxsd/xk/LoginToXk", payload);
+        // 账号被强制改密：会话虽建立，但业务页面会被全部拦到改密页，须给出明确指引
+        if (isForceChangePasswordPage(html)) {
+            loggedIn = false;
+            throw new LoginException(FORCE_CHANGE_PWD_MSG);
+        }
         if (isLoginPage(html)) {
             String message = extractMessage(html);
             throw new LoginException(message.isEmpty() ? "登录失败：学号或密码错误" : "登录失败：" + message);
@@ -431,9 +436,32 @@ public class JwglClient {
         return get(url, query);
     }
 
+    /** 教务系统「强制修改密码」页特征：该页表单 action 指向改密接口，正常业务页面不会出现。 */
+    private static final String FORCE_CHANGE_PWD_MARKER = "grsz_xgmm_beg";
+
+    /** 触发改密时的统一提示文案（登录与拉课表两条路径共用）。 */
+    private static final String FORCE_CHANGE_PWD_MSG =
+            "教务系统要求先修改密码：请用浏览器打开 jwgl.nustti.edu.cn 登录后完成改密，"
+                    + "再回到本应用用新密码登录";
+
     /** 判定页面是否真的包含课表数据：仅含表头骨架的空课表页（如学期无课或数据被清理）不算。 */
     private boolean hasTimetableData(String html) {
         return html.contains("kbtable") && html.contains("kbcontent1");
+    }
+
+    /**
+     * 判定是否为「强制修改密码」页面。
+     *
+     * <p>教务系统在账号使用初始密码 / 密码到期时，会把登录后的所有请求重定向到改密页
+     * （表单 action 为 /jsxsd/grsz/grsz_xgmm_beg.do）。此时会话其实已建立，但课表等
+     * 业务页面一律取不到数据，若不识别就会误报成「解析不出课表」。</p>
+     */
+    public static boolean isForceChangePasswordPage(String html) {
+        if (html == null || html.isEmpty()) {
+            return false;
+        }
+        return html.contains(FORCE_CHANGE_PWD_MARKER)
+                || (html.contains("确认新密码") && html.contains("修改密码"));
     }
 
     /** 拉取并解析课表。term 为空表示教务系统当前学期。 */
@@ -448,6 +476,10 @@ public class JwglClient {
             throw new JwglException("获取课表失败：" + e.getMessage(), e);
         }
         this.lastPage = html;
+        if (isForceChangePasswordPage(html)) {
+            loggedIn = false;
+            throw new LoginException(FORCE_CHANGE_PWD_MSG);
+        }
         if (isLoginPage(html)) {
             loggedIn = false;
             throw new LoginException("登录状态已失效，请重新登录");
@@ -460,6 +492,10 @@ public class JwglClient {
             term = null;
             html = openKbPage(null);
             this.lastPage = html;
+            if (isForceChangePasswordPage(html)) {
+                loggedIn = false;
+                throw new LoginException(FORCE_CHANGE_PWD_MSG);
+            }
             if (isLoginPage(html)) {
                 loggedIn = false;
                 throw new LoginException("登录状态已失效，请重新登录");
