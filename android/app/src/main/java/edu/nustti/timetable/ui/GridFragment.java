@@ -91,7 +91,7 @@ public abstract class GridFragment extends Fragment implements MainActivity.Data
                         return;
                     }
                     main.repository().store().setTerm(option.value, option.label);
-                    main.refresh(false);
+                    main.refresh();
                 }
 
                 @Override

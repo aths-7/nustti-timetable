@@ -155,15 +155,6 @@
                 android:textAllCaps="false" />
 
             <Button
-                android:id="@+id/btnDemo"
-                style="?attr/materialButtonOutlinedStyle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/action_demo"
-                android:textAllCaps="false" />
-
-            <Button
                 android:id="@+id/btnLogout"
                 style="?attr/materialButtonOutlinedStyle"
                 android:layout_width="match_parent"

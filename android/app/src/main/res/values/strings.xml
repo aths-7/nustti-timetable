@@ -10,7 +10,6 @@
     <string name="hint_password">密码</string>
 
     <string name="action_login">登录并获取课表</string>
-    <string name="action_demo">演示数据（免登录）</string>
     <string name="action_refresh">刷新课表</string>
     <string name="action_logout">退出登录</string>
     <string name="action_save">保存设置</string>
@@ -22,7 +21,6 @@
     <string name="widget_empty">暂无课表缓存\n登录后添加小组件即可在桌面查看</string>
     <string name="widget_refresh">刷新</string>
     <string name="widget_loading">加载中…</string>
-    <string name="widget_enter_offline">查看本地缓存课表</string>
     <string name="widget_updated_at">更新于 %1$s</string>
     <string name="widget_week_format">第 %1$d 周</string>
     <string name="widget_no_course_today">今天没有课 🎉</string>

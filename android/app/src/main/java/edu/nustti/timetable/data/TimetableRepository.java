@@ -8,7 +8,6 @@ import edu.nustti.timetable.edu.JwglClient;
 import edu.nustti.timetable.edu.JwglSession;
 import edu.nustti.timetable.edu.LoginException;
 import edu.nustti.timetable.model.TimetableResult;
-import edu.nustti.timetable.parse.DemoData;
 
 /**
  * 课表数据仓库：直接向南京理工大学泰州科技学院教务系统官网抓取课表、写入本地缓存、读取缓存。
@@ -61,13 +60,6 @@ public class TimetableRepository {
         client.login(studentId, password);
         JwglSession.set(client);
         return client;
-    }
-
-    /** 演示课表：本地生成，无需网络与登录。 */
-    public TimetableResult fetchDemo() throws Exception {
-        TimetableResult data = DemoData.build();
-        cache(data, "demo");
-        return data;
     }
 
     public void cache(TimetableResult data, String from) {

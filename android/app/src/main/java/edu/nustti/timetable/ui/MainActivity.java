@@ -99,7 +99,7 @@ public class MainActivity extends AppCompatActivity {
                     public boolean onMenuItemClick(MenuItem item) {
                         int id = item.getItemId();
                         if (id == R.id.action_refresh) {
-                            showRefreshDialog();
+                            refresh();
                             return true;
                         }
                         if (id == R.id.action_logout) {
@@ -116,13 +116,13 @@ public class MainActivity extends AppCompatActivity {
         bottomNavSetup();
 
         if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_REFRESH, false)) {
-            refresh(false);
+            refresh();
         } else if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_FROM_WIDGET, false)) {
             // 从桌面小组件进入：若本地缓存存在则先展示，并后台刷新一次
             if (repository.cached() != null) {
                 data = repository.cached();
                 dispatch();
-                refresh(false);
+                refresh();
             } else {
                 toast("本地暂无课表缓存，请先登录");
             }
@@ -384,12 +384,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void refresh(boolean demo) {
-        toast(demo ? "正在加载演示课表..." : "正在直连教务系统官网刷新课表...");
+    public void refresh() {
+        toast("正在直连教务系统官网刷新课表...");
         Async.run(new Async.Task<TimetableResult>() {
             @Override
             public TimetableResult run() throws Exception {
-                return demo ? repository.fetchDemo() : repository.fetchFromJwgl();
+                return repository.fetchFromJwgl();
             }
         }, new Async.Done<TimetableResult>() {
             @Override
@@ -424,19 +424,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ------------------------------------------------------------------ //
-
-    private void showRefreshDialog() {
-        String[] items = {"从教务系统官网刷新（需已登录）", "加载演示课表"};
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.action_refresh)
-                .setItems(items, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        refresh(which == 1);
-                    }
-                })
-                .show();
-    }
 
     public void confirmLogout() {
         new AlertDialog.Builder(this)

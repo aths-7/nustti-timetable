@@ -21,7 +21,7 @@ import edu.nustti.timetable.R;
 import edu.nustti.timetable.data.SessionStore;
 import edu.nustti.timetable.model.TimetableResult;
 
-/** 教育信息详情页：学号 / 当前周次 / 学期 / 保存设置 / 刷新课表 / 演示数据 / 退出登录，返回可回设置页。 */
+/** 教育信息详情页：学号 / 当前周次 / 学期 / 保存设置 / 刷新课表 / 退出登录，返回可回设置页。 */
 public class EducationActivity extends AppCompatActivity implements MainActivity.DataListener {
 
     private TextInputEditText etStudentId;
@@ -61,7 +61,6 @@ public class EducationActivity extends AppCompatActivity implements MainActivity
 
         Button btnSave = findViewById(R.id.btnSave);
         Button btnRefresh = findViewById(R.id.btnRefresh);
-        Button btnDemo = findViewById(R.id.btnDemo);
         Button btnLogout = findViewById(R.id.btnLogout);
 
         btnSave.setOnClickListener(new View.OnClickListener() {
@@ -93,19 +92,9 @@ public class EducationActivity extends AppCompatActivity implements MainActivity
             @Override
             public void onClick(View v) {
                 if (main != null) {
-                    main.refresh(false);
+                    main.refresh();
                 } else {
                     toast("请返回设置页后刷新课表");
-                }
-            }
-        });
-        btnDemo.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (main != null) {
-                    main.refresh(true);
-                } else {
-                    toast("请返回设置页后加载演示数据");
                 }
             }
         });
@@ -134,7 +123,7 @@ public class EducationActivity extends AppCompatActivity implements MainActivity
                     return;
                 }
                 store.setTerm(option.value, option.label);
-                main.refresh(false);
+                main.refresh();
             }
 
             @Override

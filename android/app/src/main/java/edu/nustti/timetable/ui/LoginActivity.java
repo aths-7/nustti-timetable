@@ -37,10 +37,17 @@ public class LoginActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_login);
 
         store = new SessionStore(this);
         repository = new TimetableRepository(this);
+
+        // 已有本地缓存时直接进课表，登录页不再作为开屏出现
+        if (repository.cached() != null) {
+            openMain();
+            return;
+        }
+
+        setContentView(R.layout.activity_login);
 
         etStudentId = findViewById(R.id.etStudentId);
         etPassword = findViewById(R.id.etPassword);
@@ -48,24 +55,9 @@ public class LoginActivity extends AppCompatActivity {
         progress = findViewById(R.id.progress);
 
         Button btnLogin = findViewById(R.id.btnLogin);
-        Button btnDemo = findViewById(R.id.btnDemo);
-        Button btnOffline = findViewById(R.id.btnOffline);
 
         etStudentId.setText(store.getStudentId());
         etPassword.setText(store.getPassword());
-
-        // 已有本地缓存时，允许跳过登录直接查看（已登录的课表会一直留在本机）
-        if (repository.cached() != null) {
-            btnOffline.setVisibility(View.VISIBLE);
-            btnOffline.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    openMain();
-                }
-            });
-        } else {
-            btnOffline.setVisibility(View.GONE);
-        }
 
         btnLogin.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -73,17 +65,6 @@ public class LoginActivity extends AppCompatActivity {
                 doLogin();
             }
         });
-        btnDemo.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                doDemo();
-            }
-        });
-
-        TimetableResult cached = repository.cached();
-        if (cached != null) {
-            setStatus("本地已有 " + cached.courses.size() + " 门课的缓存，可直接登录或加载演示数据");
-        }
     }
 
     // ------------------------------------------------------------------ //
@@ -134,27 +115,6 @@ public class LoginActivity extends AppCompatActivity {
         });
     }
 
-    private void doDemo() {
-        setBusy(true, "正在生成本地演示课表 ...");
-        Async.run(new Async.Task<TimetableResult>() {
-            @Override
-            public TimetableResult run() throws Exception {
-                return repository.fetchDemo();
-            }
-        }, new Async.Done<TimetableResult>() {
-            @Override
-            public void onResult(TimetableResult result) {
-                setBusy(false, "演示课表已加载：" + result.courses.size() + " 门课");
-                openMain();
-            }
-        }, new Async.Fail() {
-            @Override
-            public void onError(Exception e) {
-                setBusy(false, "演示课表加载失败：" + message(e));
-            }
-        });
-    }
-
     private void openMain() {
         startActivity(new Intent(this, MainActivity.class));
         finish();
@@ -165,7 +125,6 @@ public class LoginActivity extends AppCompatActivity {
     private void setBusy(boolean busy, String status) {
         progress.setVisibility(busy ? View.VISIBLE : View.GONE);
         findViewById(R.id.btnLogin).setEnabled(!busy);
-        findViewById(R.id.btnDemo).setEnabled(!busy);
         setStatus(status);
     }
 
