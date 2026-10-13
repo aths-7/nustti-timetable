@@ -129,10 +129,10 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
     private static RemoteViews buildBaseViews(Context context) {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_timetable);
 
-        // 整体不透明度：设置在根布局上，连同背景与内容一起透出桌面壁纸
+        // 透明度只作用于背景层（widget_bg_view）；课程色块与文字始终不透明
         int alphaPercent = new SessionStore(context).getWidgetAlphaPercent();
         try {
-            views.setFloat(R.id.widget_root, "setAlpha", alphaPercent / 100f);
+            views.setFloat(R.id.widget_bg_view, "setAlpha", alphaPercent / 100f);
         } catch (Throwable ignored) {
             // 个别厂商 Launcher 对该 RemoteViews 反射调用不兼容时忽略，不影响显示
         }
@@ -176,7 +176,9 @@ public class TimetableWidgetProvider extends AppWidgetProvider {
         }
 
         int[] size = widgetSize(context, mgr, appWidgetId);
-        Bitmap bitmap = WidgetBitmapRenderer.render(context, data, week, size[0], size[1]);
+        int alphaPercent = new SessionStore(context).getWidgetAlphaPercent();
+        Bitmap bitmap = WidgetBitmapRenderer.render(context, data, week, size[0], size[1],
+                alphaPercent);
         if (bitmap == null) {
             views.setViewVisibility(R.id.widget_image, android.view.View.GONE);
             views.setViewVisibility(R.id.widget_empty, android.view.View.VISIBLE);

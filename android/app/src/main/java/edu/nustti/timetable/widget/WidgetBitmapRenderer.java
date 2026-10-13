@@ -51,14 +51,23 @@ public final class WidgetBitmapRenderer {
     private WidgetBitmapRenderer() {
     }
 
-    public static Bitmap render(Context context, TimetableResult data, int week, int width, int height) {
+    /**
+     * 渲染整周课表位图。
+     *
+     * @param alphaPercent 背景不透明度百分比（20 - 100）。位图不再铺不透明底色，
+     *                     底色由布局中的背景层提供并按此值淡出；此处表头条与网格线
+     *                     同样按该值淡出，而课程色块与所有文字始终保持不透明。
+     */
+    public static Bitmap render(Context context, TimetableResult data, int week,
+                                int width, int height, int alphaPercent) {
         if (width <= 0 || height <= 0) {
             width = 720;
             height = 960;
         }
         Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bmp);
-        canvas.drawColor(BG_COLOR);
+        // 不铺底色：透明区域透出布局背景层（已按透明度淡出），课程块与文字照常不透明绘制
+        int bgAlpha = Math.round(Math.max(0f, Math.min(1f, alphaPercent / 100f)) * 255);
 
         float density = context.getResources().getDisplayMetrics().density;
         float dp = density;
@@ -80,10 +89,11 @@ public final class WidgetBitmapRenderer {
 
         Map<String, List<Course>> slotGroups = groupCourses(data, week);
 
-        // 表头背景
+        // 表头背景（随背景一起淡出）
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(HEADER_BG);
+        paint.setAlpha(bgAlpha);
         canvas.drawRect(0, 0, width, headerH, paint);
 
         TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -97,16 +107,18 @@ public final class WidgetBitmapRenderer {
             if (i + 1 == todayWeekday) {
                 Paint highlight = new Paint(Paint.ANTI_ALIAS_FLAG);
                 highlight.setColor(TODAY_HEADER_BG);
+                highlight.setAlpha(bgAlpha);
                 canvas.drawRect(labelW + i * colW, 0, labelW + (i + 1) * colW, headerH, highlight);
             }
             float baseline = headerH / 2f - (textPaint.descent() + textPaint.ascent()) / 2f;
             canvas.drawText(WEEKDAY_NAMES[i], cx, baseline, textPaint);
         }
 
-        // 网格线
+        // 网格线（随背景一起淡出）
         Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         linePaint.setStyle(Paint.Style.STROKE);
         linePaint.setColor(GRID_LINE);
+        linePaint.setAlpha(bgAlpha);
         linePaint.setStrokeWidth(1 * dp);
 
         for (int i = 0; i <= 7; i++) {

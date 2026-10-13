@@ -2,14 +2,21 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
-    android:padding="10dp">
+    android:layout_height="match_parent">
+
+    <!-- 背景层：铺满整个小组件（不受内容 padding 影响）；透明度调节只作用于这一层，
+         课程色块与文字始终不透明 -->
+    <View
+        android:id="@+id/widget_bg_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_bg" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="10dp">
 
         <LinearLayout
             android:layout_width="match_parent"
